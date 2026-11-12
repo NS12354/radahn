@@ -1,0 +1,14 @@
+node_modules/
+dist/
+vendor/ArduinoCore-avr/
+vendor/Adafruit_NeoPixel/
+*.log
+.DS_Store
+.env
+public/vendor/
+.env.*
+!.env.example
+test-results/
+playwright-report/
+blob-report/
+coverage/

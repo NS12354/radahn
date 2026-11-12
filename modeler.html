@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Formframe Modeler</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body class="ws-layout">
+<div id="topbar">
+  <span class="tlogo" id="tLogo" title="Formframe Modeler"></span>
+  <div id="topMenus"></div>
+  <div id="workspaces"><button data-ws="layout" class="on">Layout</button><button data-ws="modeling">Modeling</button><button data-ws="shading">Shading</button></div>
+  <div class="tright"><span id="saveState"></span><span id="projName"></span><button class="tbtn" id="bStudio" title="Switch to the studio window">Studio ↗</button></div>
+</div>
+
+<div id="areas">
+  <section class="area" id="aView">
+    <div class="ahead" id="vHead">
+      <span class="etype" title="3D Viewport"></span>
+      <button class="hdrop" id="modeDrop" title="Interaction mode">Object Mode ▾</button>
+      <div class="hgroup" id="selModes" style="display:none;margin:0 6px 0 0"><button class="hb" data-sm="vert" title="Vertex select (1)"></button><button class="hb" data-sm="edge" title="Edge select (2)"></button><button class="hb" data-sm="face" title="Face select (3)"></button></div>
+      <div id="viewMenus"></div>
+      <span class="sp"></span>
+      <div class="hgroup"><button class="hb" id="bSnap" title="Snap (Shift Tab)"></button></div>
+      <div class="hgroup"><button class="hb" id="bOverlay" title="Show overlays"></button><button class="hb" id="bXray" title="Toggle X-Ray (Alt Z)"></button></div>
+      <div class="hgroup" id="shadeBtns"><button class="hb" data-sh="wire" title="Wireframe"></button><button class="hb" data-sh="solid" title="Solid"></button><button class="hb" data-sh="material" title="Material Preview"></button><button class="hb" data-sh="rendered" title="Rendered"></button></div>
+    </div>
+    <div id="vp">
+      <div id="vText"><div id="vName"></div><div id="vSub"></div></div>
+      <div id="modalHud"></div>
+      <div id="toolbar"></div>
+      <div id="navWrap"><canvas id="navGizmo" width="80" height="80"></canvas>
+        <div class="navbtns"><button id="nZoom" title="Zoom (drag)"></button><button id="nPan" title="Move the view (drag)"></button><button id="nOrtho" title="Switch the current view from perspective/orthographic projection"></button></div>
+      </div>
+      <aside id="sidebar"><div id="sbTabs"><button data-t="item" class="on">Item</button><button data-t="tool">Tool</button><button data-t="view">View</button></div><div id="sbBody"></div></aside>
+      <div id="redo"></div>
+      <div id="boxsel"></div>
+      <div id="banner"></div>
+    </div>
+  </section>
+  <div class="split v" data-split="rw"></div>
+  <div id="rightCol">
+    <section class="area" id="aOut">
+      <div class="ahead"><span class="etype out" title="Outliner"></span><input id="outSearch" class="hsearch" placeholder="🔍" spellcheck="false"></div>
+      <div id="outliner"></div>
+    </section>
+    <div class="split h" data-split="oh"></div>
+    <section class="area" id="aProps">
+      <div class="ahead"><span class="etype props" title="Properties"></span><span class="htitle" id="propsTitle"></span></div>
+      <div class="pbody"><div id="ptabs"></div><div id="pcontent"></div></div>
+    </section>
+  </div>
+  <div class="split h" data-split="bh"></div>
+  <section class="area" id="aInfo">
+    <div class="ahead"><span class="etype info" title="Info"></span><div class="itabs" id="infoTabs"><button data-i="reports" class="on">Info</button><button data-i="fit">Fit Check</button><button data-i="notes">Build Notes</button></div><span class="sp"></span><span class="hdim" id="infoHint"></span></div>
+    <div id="info"></div>
+  </section>
+</div>
+
+<footer id="status"><span id="stLeft"></span><span class="sp"></span><span id="stRight"></span></footer>
+<div id="menuLayer"></div>
+<div id="picker"><div class="pbox"><h2>Open a project in the modeler</h2><div id="pickList"></div><p class="hdim">Projects come from the Formframe studio in this browser.</p></div></div>
+<script type="module" src="/src/modeler/main.ts"></script>
+</body>
+</html>

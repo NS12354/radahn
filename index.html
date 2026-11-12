@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Formframe — Hardware Prototyping Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+</head>
+<body class="m-design">
+<header id="top">
+  <button class="logo" id="bHome" title="All projects"><i></i>Formframe</button>
+  <div class="menu">
+    <button class="btn" id="bMenu">Project ▾</button>
+    <div class="dd" id="menu">
+      <button data-a="home">All projects</button>
+      <button data-a="newBlank">New blank project</button>
+      <button data-a="newExample">New from thermostat example</button>
+      <button data-a="open">Open project… <span>.json</span></button>
+      <button data-a="openFolder">Open project folder… <span>Chrome</span></button>
+      <hr>
+      <button data-a="save">Download project <span>⌘S</span></button>
+      <button data-a="saveFolder">Save to folder (Git-friendly) <span>Chrome</span></button>
+      <button data-a="copy">Copy project JSON</button>
+      <hr>
+      <button data-a="importCad">Import CAD model… <span>GLB · STL · STEP</span></button>
+      <button data-a="parametric">Use built-in thermostat model</button>
+      <button data-a="build">Build your own model</button>
+      <button data-a="modeler">Open 3D modeler window <span>↗</span></button>
+      <button data-a="blender">Open in Blender (live link) <span>↗</span></button>
+      <button data-a="ide">Open coding environment <span>↗</span></button>
+      <button data-a="autobuild">Auto build model from electronics</button>
+      <hr>
+      <button data-a="snapshot">Snapshot viewport (PNG)</button>
+      <button data-a="firmware">Export interaction firmware (C++)</button>
+      <hr>
+      <button data-a="tour">Tutorial walkthrough</button>
+    </div>
+  </div>
+  <input class="fname" id="pname" spellcheck="false" aria-label="Project name">
+  <button class="health none" id="bHealth"><i></i><span>Not tested yet</span></button>
+  <div class="seg" id="modes">
+    <button data-m="design" class="on">Design</button>
+    <button data-m="proto">Prototype</button>
+    <button data-m="elec">Electronics</button>
+    <button data-m="review">Review</button>
+  </div>
+  <div class="tb">
+    <button class="btn" id="bModeler" title="Open this project in the Blender-style 3D modeler (separate window)">3D Modeler ↗</button>
+    <button class="btn" id="bBlender" title="Open this project in Blender with a live two-way link">Blender ↗</button>
+    <button class="btn" id="bExplode">Exploded view</button>
+    <button class="btn primary" id="bPresent">Present</button>
+  </div>
+</header>
+
+<div id="app">
+  <aside id="left">
+    <div class="sec nx" id="secParts"><h3>Parts <span id="partsNote"></span></h3><div id="partList"></div></div>
+    <div class="sec nx" id="secBuild" style="display:none">
+      <h3>Add shape</h3>
+      <div class="lib" id="shapeBtns"></div>
+      <div class="note">Drag the handles to move. <b>W</b> move · <b>E</b> rotate · <b>R</b> resize · <b>⌘D</b> duplicate · <b>⌫</b> delete</div>
+    </div>
+    <div class="sec nx md-only" id="secAuto">
+      <h3>Auto build <span id="autoSrc"></span></h3>
+      <div class="row"><label>Shape</label><select id="abStyle" style="flex:1"><option value="auto">Auto</option><option value="round">Round</option><option value="rect">Rectangular</option></select></div>
+      <div class="row"><label>Wall mm</label><input type="number" id="abWall" min="0.8" max="6" step="0.2" style="flex:1"><label style="width:auto">Gap</label><input type="number" id="abClear" min="0" max="5" step="0.5" style="width:56px"></div>
+      <div class="row"><label>Mount</label><select id="abMount" style="flex:1"><option value="wall">Wall plate</option><option value="desk">Desk (feet / stand)</option><option value="none">None</option></select></div>
+      <label class="keep"><input type="checkbox" id="abBattery"> Add a LiPo battery</label>
+      <button class="btn primary" id="bAutoBuild" style="width:100%;margin-top:8px">Auto build from electronics</button>
+      <div class="note">Builds an enclosure around the board and parts wired in Electronics: knobs, caps, display window, light ring, ports and vents. Parts you added yourself are kept.</div>
+      <div id="autoNotes" class="notes"></div>
+    </div>
+    <div class="sec nx" id="secCad">
+      <h3>CAD model</h3>
+      <div class="dropzone" id="drop">Drop a <b>GLB, STL or STEP</b> file, or click to import</div>
+      <div class="note" id="cadNote">Bind meshes to roles (Dial, Screen, Press, LED) and the electronics will drive them.</div>
+    </div>
+    <div class="sec nx" id="secScreens"><h3>Screens <span>on display</span></h3><div id="screenList"></div></div>
+    <div class="sec nx" id="secInternals"><h3>Internal components <span id="fitBadgeL"></span></h3><div id="compList"></div></div>
+    <div class="sec mx" id="secAddLink">
+      <h3>Add from a link <span id="linkNote"></span></h3>
+      <div class="row" style="margin:0"><input type="url" id="partUrl" placeholder="Product page or datasheet URL" spellcheck="false" style="flex:1;min-width:0"><button class="btn primary" id="bPartUrl">Read</button></div>
+      <div class="note">Paste a link to any part (a shop page, maker page or PDF datasheet). Formframe reads the specs, requirements and uses, then adds it so you can wire, simulate and auto build with it. <a id="bPartManual" class="lnk">Or define one by hand.</a></div>
+      <div id="partReview"></div>
+    </div>
+    <div class="sec mx"><h3>Add component</h3><div id="libList" class="lib"></div></div>
+    <div class="sec mx"><h3>Electrical checks <span id="chkBadge"></span></h3><div id="chkList"></div></div>
+    <div class="sec mx"><h3>Electronics BOM</h3><table class="bom" id="ebom"></table></div>
+  </aside>
+
+  <section id="center">
+    <div id="viewport">
+      <div id="pins"></div>
+      <div id="hint"></div>
+      <div id="statebadge"></div>
+      <div id="vpEmpty">
+        <b>No model yet</b>
+        <p>This project is blank. Build a model from shapes, let auto build make one around your electronics, import CAD, or start from the built-in round enclosure.</p>
+        <div class="row"><button class="btn primary" id="eAuto">Auto build from electronics</button><button class="btn" id="eBuild">Build your own</button></div>
+        <div class="row"><button class="btn" id="eImport">Import CAD…</button><button class="btn" id="eParam">Use built-in model</button></div>
+        <span>You can also go straight to <a data-m="elec">Electronics</a> and work without a model.</span>
+      </div>
+      <div id="toast"></div>
+    </div>
+    <div id="bottom">
+      <div id="graphwrap"><h3>State machine</h3><svg id="graph" viewBox="0 -6 640 138" preserveAspectRatio="xMidYMid meet"></svg></div>
+      <div id="logwrap"><h3>Event log</h3><div id="log"></div></div>
+      <div id="bench"><div id="benchIn"><svg id="wires"></svg></div></div>
+    </div>
+  </section>
+
+  <aside id="right">
+    <div class="mode-only md">
+      <div class="sec" id="secInspector">
+        <h3>Inspector <span id="selName"></span></h3>
+        <div id="inspector"></div>
+      </div>
+      <div class="sec" id="secModel" style="display:none">
+        <h3>Model <span id="modelSize"></span></h3>
+        <label class="keep"><input type="checkbox" id="mXray"> X-ray: fade the enclosure to see inside</label>
+        <h3 style="margin-top:12px">Fit check <span id="mFitBadge"></span></h3><div id="mFitList"></div>
+        <h3 style="margin-top:12px">Roles</h3><div id="mRoles"></div>
+        <div class="note">Approximate: footprints are boxes, circles and rings, so treat it as a sanity check, not CAD.</div>
+      </div>
+      <div class="sec" id="secEnclosure">
+        <h3>Enclosure</h3>
+        <div class="row"><label>Diameter</label><input type="range" id="eDia" min="60" max="100" step="1"><span class="v" id="eDiaV"></span></div>
+        <div class="row"><label>Depth</label><input type="range" id="eDep" min="16" max="36" step="1"><span class="v" id="eDepV"></span></div>
+        <div class="row"><label>Process</label><select id="eProc" style="flex:1"><option value="im">Injection molded PC/ABS</option><option value="cnc">CNC aluminum, anodized</option><option value="sla">SLA print (prototype)</option></select></div>
+      </div>
+      <div class="sec" id="secFit"><h3>Fit check <span id="fitBadge"></span></h3><div id="fitList"></div><div class="note">Inner volume = diameter − walls − dial ring; depth − walls − lens; 1 mm clearance per layer.</div></div>
+      <div class="sec" id="secBom"><h3>BOM estimate <span>qty <input type="number" id="qty" min="1" step="1000" style="width:72px"></span></h3><table class="bom" id="bom"></table><div class="note">Placeholder pricing. Wire in supplier quotes for real numbers.</div></div>
+    </div>
+
+    <div class="mode-only mp">
+      <div class="sec">
+        <h3>Live state</h3>
+        <div class="kv"><span>State</span><span id="kvState"></span></div>
+        <div class="kv"><span>Target</span><span id="kvTarget"></span></div>
+        <div class="kv"><span>Room (simulated)</span><span id="kvRoom"></span></div>
+        <div class="row" style="margin-top:8px"><button class="btn" id="bReset" style="flex:1">Reset</button><button class="btn" id="bWarm" style="flex:1">Room +2°</button><button class="btn" id="bCool" style="flex:1">Room −2°</button></div>
+      </div>
+      <div class="sec">
+        <h3>Interactions <span id="trCount"></span></h3>
+        <div id="trList"></div>
+        <button class="btn" id="bAddTr" style="width:100%">+ Add interaction</button>
+        <div class="note">Drag the dial to turn it. Click the display to press, hold to long-press. Amber log lines are gaps in the spec.</div>
+      </div>
+    </div>
+
+    <div class="mode-only me">
+      <div class="sec" style="flex:none;padding-bottom:8px">
+        <h3>Target <span id="fidelity"></span></h3>
+        <div class="row" style="margin:0 0 6px"><select id="board" style="flex:1"></select></div>
+        <div class="row" style="margin:0">
+          <div class="seg2" id="target"><button data-t="virtual" class="on">Virtual board</button><button data-t="physical">Physical board (USB)</button></div>
+          <span class="speed" id="speed"></span>
+        </div>
+        <div class="note" id="boardNote"></div>
+      </div>
+      <div class="tabs" id="fileTabs"></div>
+      <div class="editor"><pre id="gutter"></pre><textarea id="code" spellcheck="false" autocomplete="off" autocapitalize="off"></textarea></div>
+      <div class="compile" id="compileOut"></div>
+      <div class="runbar">
+        <span class="status" id="runStatus">idle</span>
+        <button class="btn" id="bIde" title="Open the coding environment for this board in its own window">IDE ↗</button>
+        <button class="btn" id="bTpl" title="Regenerate starter code from the current wiring">Reset code</button>
+        <button class="btn" id="bCompile">Compile</button>
+        <button class="btn primary" id="bRun">▶ Run</button>
+      </div>
+      <div class="serhead">Serial monitor <span id="runState"></span><button class="btn" id="bClr">Clear</button></div>
+      <div id="serial"></div>
+      <div id="serialIn"><input id="serialInput" placeholder="Send to REPL / Serial  (Enter · Ctrl-C to interrupt)" spellcheck="false"></div>
+    </div>
+
+    <div class="mode-only mr">
+      <div class="sec"><h3>Comments <span id="cmtCount"></span></h3><div id="cmtList"></div><div class="note">Click the model to pin a comment to that spot.</div></div>
+    </div>
+  </aside>
+</div>
+
+<div id="home">
+  <div class="hwrap">
+    <div class="hhead"><div class="logo"><i></i>Formframe</div><button class="btn" id="hTour">▶ Take the tour</button></div>
+    <h2>Start something</h2>
+    <div class="starts">
+      <div class="start" id="hBlank" role="button" tabindex="0"><div class="ic ic-blank"></div><b>Blank project</b><span>No model, no parts, no code. Board: <select id="homeBoard"></select></span></div>
+      <button class="start" id="hExample"><div class="ic ic-ex"></div><b>Thermostat example</b><span>A finished round thermostat with firmware, a good place to explore</span></button>
+      <button class="start" id="hOpen"><div class="ic ic-open"></div><b>Open file…</b><span>Import a .formframe.json project</span></button>
+      <button class="start" id="hFolder"><div class="ic ic-folder"></div><b>Open folder…</b><span>A project saved to a Git folder (Chrome, Edge)</span></button>
+    </div>
+    <div class="hrow"><h2>Your projects <span id="homeCount"></span></h2><input type="text" id="homeSearch" placeholder="Search projects" spellcheck="false"></div>
+    <div class="note" id="homeWarn" style="display:none">This browser is blocking storage, so projects only last until you close the tab. Download them from the Project menu to keep them.</div>
+    <div id="homeGrid"></div>
+  </div>
+</div>
+
+<aside id="problems" aria-label="Is it working?">
+  <div class="phd"><b>Is it working?</b><button class="btn" id="pClose" title="Close">✕</button></div>
+  <div id="psum"></div>
+  <div class="ptest"><button class="btn primary" id="bTest">▶ Test it</button><span>Runs your code, presses and turns every input for you, and checks each part responds.</span></div>
+  <div id="ptest"></div>
+  <div id="plist"></div>
+</aside>
+
+<div id="modal"><div class="box">
+  <div class="mh"><b id="mTitle"></b><span style="color:var(--dim)" id="mSub"></span>
+    <div class="tb"><button class="btn" id="mCopy">Copy</button><button class="btn" id="mClose">Close</button></div></div>
+  <pre id="mBody"></pre>
+</div></div>
+<input type="file" id="fileProject" accept=".json,application/json" hidden>
+<input type="file" id="fileCad" accept=".glb,.gltf,.stl,.step,.stp" hidden>
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>

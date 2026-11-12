@@ -1,0 +1,89 @@
+import { LEGACY_LS_KEY, parseProject, serializeProject, type Project } from './project';
+
+/**
+ * Browser-local project library (IndexedDB). Metadata and project bodies live
+ * in separate stores so the home screen can list projects without loading
+ * every embedded CAD model. Falls back to memory when IndexedDB is blocked
+ * (private windows, sandboxed frames); `persistent` tells the UI which it got.
+ */
+export interface ProjectMeta {
+  id: string;
+  name: string;
+  created: number;
+  updated: number;
+  board: string;
+  /** Small JPEG data URL of the viewport, when there is a model to show. */
+  thumb?: string;
+}
+
+const DB = 'formframe', META = 'meta', DATA = 'data';
+let dbp: Promise<IDBDatabase | null> | null = null;
+const mem = { meta: new Map<string, ProjectMeta>(), data: new Map<string, string>() };
+export let persistent = true;
+
+function db() {
+  if (!dbp) dbp = new Promise(res => {
+    try {
+      const r = indexedDB.open(DB, 1);
+      r.onupgradeneeded = () => { r.result.createObjectStore(META, { keyPath: 'id' }); r.result.createObjectStore(DATA); };
+      r.onsuccess = () => res(r.result);
+      r.onerror = () => { persistent = false; res(null); };
+    } catch { persistent = false; res(null); }
+  });
+  return dbp;
+}
+
+function req<T>(r: IDBRequest<T>) { return new Promise<T>((res, rej) => { r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); }
+function done(t: IDBTransaction) { return new Promise<void>((res, rej) => { t.oncomplete = () => res(); t.onerror = t.onabort = () => rej(t.error); }); }
+
+export const newProjectId = () => 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+
+export async function listProjects(): Promise<ProjectMeta[]> {
+  const d = await db();
+  const all = d ? await req<ProjectMeta[]>(d.transaction(META).objectStore(META).getAll()) : [...mem.meta.values()];
+  return all.sort((a, b) => b.updated - a.updated);
+}
+
+export async function getMeta(id: string): Promise<ProjectMeta | undefined> {
+  const d = await db();
+  return d ? req<ProjectMeta | undefined>(d.transaction(META).objectStore(META).get(id)) : mem.meta.get(id);
+}
+
+export async function loadProject(id: string): Promise<Project | null> {
+  const d = await db();
+  const s = d ? await req<string | undefined>(d.transaction(DATA).objectStore(DATA).get(id)) : mem.data.get(id);
+  return s ? parseProject(s) : null;
+}
+
+/**
+ * Save a project body and refresh its metadata. `thumb: null` clears the thumbnail.
+ * `edited: false` (e.g. only refreshing the thumbnail) keeps the "last edited" time.
+ */
+export async function saveProject(id: string, p: Project, thumb?: string | null, edited = true) {
+  const prev = await getMeta(id);
+  const now = Date.now();
+  const meta: ProjectMeta = { id, name: p.name || 'Untitled project', created: prev?.created ?? now, updated: edited || !prev ? now : prev.updated, board: p.electronics.board, thumb: thumb === null ? undefined : thumb ?? prev?.thumb };
+  const body = serializeProject(p);
+  const d = await db();
+  if (!d) { mem.meta.set(id, meta); mem.data.set(id, body); return; }
+  const t = d.transaction([META, DATA], 'readwrite');
+  t.objectStore(META).put(meta); t.objectStore(DATA).put(body, id);
+  await done(t);
+}
+
+export async function deleteProject(id: string) {
+  const d = await db();
+  if (!d) { mem.meta.delete(id); mem.data.delete(id); return; }
+  const t = d.transaction([META, DATA], 'readwrite');
+  t.objectStore(META).delete(id); t.objectStore(DATA).delete(id);
+  await done(t);
+}
+
+/** One-time import of the old single-slot localStorage autosave. */
+export async function migrateLegacy() {
+  let s: string | null = null;
+  try { s = localStorage.getItem(LEGACY_LS_KEY); } catch { return; }
+  if (!s) return;
+  try { await saveProject(newProjectId(), parseProject(s)); } catch { /* unreadable: drop it */ }
+  try { localStorage.removeItem(LEGACY_LS_KEY); } catch { }
+}
