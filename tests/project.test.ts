@@ -34,7 +34,7 @@ describe('blank project', () => {
     p.electronics.comps.push({ uid: 'x', type: Object.keys(p.internals)[0], pins: {}, color: '#fff' } as any);
     expect(starterFiles(BOARDS.picow, p.electronics)['main.py']).not.toMatch(/thermostat/i);
   });
-  it('treats old projects without a starter as the thermostat example', () => {
+  it('treats old projects without a starter as the The First Step', () => {
     const p: any = JSON.parse(serializeProject(defaultProject())); delete p.electronics.starter;
     expect(parseProject(JSON.stringify(p)).electronics.starter).toBe('thermostat');
   });

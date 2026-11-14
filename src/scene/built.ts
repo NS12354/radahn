@@ -5,7 +5,7 @@ import { FINISHES } from './parametric';
 import type { BuiltModel, BuiltPart } from '../app/project';
 import { instances } from '../app/fit';
 import { partMeshGeometry } from './mesh';
-import { screenPart } from '../app/screenpart';
+import { screenPart, type ScreenPick } from '../app/screenpart';
 
 /**
  * A product made of primitives (by hand in the modeler, or by auto build).
@@ -98,7 +98,7 @@ export class BuiltProduct extends Product {
   private explodeGoal = 0;
   private pressDepth = 0;
   /** The part showing the display (Screen role, or picked automatically by name). */
-  screenOn: { id: string; auto: boolean } | null = null;
+  screenOn: ScreenPick | null = null;
   /** Exploded view: mm per layer step, from the model's depth. */
   private explStep = 8;
   private faded = -1;
@@ -106,17 +106,23 @@ export class BuiltProduct extends Product {
   /** Root the modeler is dragging: left alone by the per-frame transform pass. */
   frozen: THREE.Object3D | null = null;
 
-  constructor(public model: BuiltModel) {
+  constructor(public model: BuiltModel, private displays: string[] = []) {
     super();
     this.mm.scale.setScalar(0.1);
     this.group.add(this.mm);
     this.build();
   }
 
+  /** The wired display components (their model part shows the screen). Rebuilds if they changed. */
+  setDisplays(uids: string[]) {
+    if (uids.join() === this.displays.join()) return;
+    this.displays = uids; this.build();
+  }
+
   /** Rebuild every part's meshes from the model. */
   build() {
     this.clearParts();
-    this.screenOn = screenPart(this.model.parts);
+    this.screenOn = screenPart(this.model.parts, this.displays);
     const dial = this.model.parts.filter(p => p.role === 'dial');
     this.pivot.on = dial.length > 0;
     if (dial[0]) {

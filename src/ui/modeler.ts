@@ -5,7 +5,7 @@ import { $, $$, el, esc, opts, toast } from './dom';
 import { BuiltProduct } from '../scene/built';
 import { newUid, defaultAutoOpts, type BindRole, type BuiltModel, type BuiltPart, type ShapeKind } from '../app/project';
 import { autoBuild, mergeRebuild } from '../app/autobuild';
-import { screenPart } from '../app/screenpart';
+import { screenPart, displayComps } from '../app/screenpart';
 import { bounds, fitBuilt } from '../app/fit';
 import { COMPONENTS } from '../hw/library/components';
 import { track } from './track';
@@ -222,15 +222,15 @@ export function renderModel(app: App) {
   if (!fit.length) fl.innerHTML = '<div class="empty">Mark parts as Internal to check they fit inside the shell.</div>';
 
   // roles vs electronics
-  const auto = screenPart(m.parts);
-  const has = (r: BindRole) => m.parts.filter(p => p.role === r || (r === 'screen' && auto?.auto && p.id === auto.id));
+  const pick = screenPart(m.parts, displayComps(app.project));
+  const has = (r: BindRole) => r === 'screen' ? m.parts.filter(p => p.id === pick?.id) : m.parts.filter(p => p.role === r);
   const types = new Set(app.project.electronics.comps.map(c => c.type));
   const need: [string, BindRole, string][] = [['encoder', 'dial', 'Dial'], ['tft', 'screen', 'Screen'], ['neopixel', 'led', 'LED'], ['button', 'press', 'Press']];
   const rows: string[] = [];
   for (const r of ['dial', 'screen', 'press', 'led'] as BindRole[]) {
     const ps = has(r); if (!ps.length) continue;
     const segs = r === 'led' ? ps.reduce((a, p) => a + (p.segments && p.segments > 1 ? p.segments : 1), 0) : 0;
-    rows.push(`<div class="chk ok"><i></i><span><b>${ROLES[r]}</b>: ${esc(ps.map(p => p.name).join(', '))}${segs > 1 ? ` · ${segs} lit segments` : ''}${r === 'screen' && auto?.auto ? ' <em>(picked automatically from its name; set a part\'s Role to Screen to choose another)</em>' : ''}</span></div>`);
+    rows.push(`<div class="chk ok"><i></i><span><b>${ROLES[r]}</b>: ${esc(ps.map(p => p.name).join(', '))}${segs > 1 ? ` · ${segs} lit segments` : ''}${r === 'screen' && pick?.why === 'wiring' ? ' <em>(the wired display; give another part the Screen role to override)</em>' : r === 'screen' && pick?.why === 'name' ? ' <em>(guessed from its name: no part is linked to the wired display; set a part\'s Role to Screen to choose)</em>' : ''}</span></div>`);
   }
   for (const [t, r, label] of need) if (types.has(t) && !has(r).length && !(r === 'press' && has('screen').length))
     rows.push(`<div class="chk warn"><i></i><span>${esc(COMPONENTS[t].name)} is wired, but no part has the <b>${label}</b> role, so it won't show on the model.</span></div>`);

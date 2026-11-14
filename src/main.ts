@@ -20,6 +20,7 @@ import { BlenderLink } from './app/blenderlink';
 import { initDeviceBridge, notifyDevice } from './ui/devicebridge';
 import { initHealth, refreshStatic, resetHealth } from './ui/health';
 import { initGitHub, showGitHub } from './ui/github';
+import { displayComps } from './app/screenpart';
 import { initClaude, claudeFilesChanged, claudeContextChanged, closeClaude } from './ui/claude';
 import { initPlan, render as renderPlan, resetPlanUndo } from './ui/plan';
 import { track } from './ui/track';
@@ -95,7 +96,7 @@ class FormframeApp implements App {
     initHome({
       openProject: id => this.openProject(id),
       newBlank: board => this.createProject(blankProject(board), 'Blank project'),
-      newExample: () => this.createProject(defaultProject(), 'Thermostat example'),
+      newExample: () => this.createProject(defaultProject(), 'The First Step'),
       openFile: () => $('#fileProject').click(),
       openFolder: () => this.openFolder(),
       duplicateProject: id => this.duplicateProject(id),
@@ -247,7 +248,7 @@ class FormframeApp implements App {
   }
   private async tourFromHome() {
     // Run the tour on a fresh copy of the example that is not saved, so the walkthrough has something to show.
-    const p = defaultProject(); p.name = 'Tour: thermostat example';
+    const p = defaultProject(); p.name = 'Tour: The First Step';
     await this.load(p, 'Tutorial', null);
     startTour(() => { $('#hTour').classList.remove('nudge'); if (!this.projectId) this.goHome(); });
   }
@@ -257,7 +258,7 @@ class FormframeApp implements App {
     const imp = this.project.product.imported;
     if (this.project.product.source === 'built' && !this.project.product.built) this.project.product.source = 'none';
     if (this.project.product.source === 'none') this.product = new EmptyProduct();
-    else if (this.project.product.source === 'built') this.product = new BuiltProduct(this.project.product.built!);
+    else if (this.project.product.source === 'built') this.product = new BuiltProduct(this.project.product.built!, displayComps(this.project));
     else if (this.project.product.source === 'imported' && imp?.data) {
       try {
         const root = await loadCad(b64decode(imp.data), imp.format, BASE);
@@ -284,6 +285,7 @@ class FormframeApp implements App {
   /** (Re)build the exploded-view electronics for the current product and wiring. */
   refreshElectronics() {
     const p = this.product; if (!p) return;
+    if (p instanceof BuiltProduct) p.setDisplays(displayComps(this.project));
     const skip = new Set<string>();
     if (p instanceof BuiltProduct) for (const part of this.project.product.built?.parts ?? []) if (part.kind === 'internal' && part.comp) skip.add(part.comp);
     // imported models are normalised to ~8 units across; everything else is 1 unit = 10 mm
@@ -487,7 +489,7 @@ class FormframeApp implements App {
       const a = b.dataset.a;
       if (a === 'home') this.goHome();
       if (a === 'newBlank') this.createProject(blankProject(this.project.electronics.board), 'Blank project');
-      if (a === 'newExample') this.createProject(defaultProject(), 'Thermostat example');
+      if (a === 'newExample') this.createProject(defaultProject(), 'The First Step');
       if (a === 'tour') startTour();
       if (a === 'open') $('#fileProject').click();
       if (a === 'openFolder') this.openFolder();

@@ -7,7 +7,7 @@ import { customOf, cardKind } from '../hw/custom';
 import { explainCheck, explainSim, explainPython, explainCompile, parseTraceback, friendly, type Explained, type Level } from '../app/explain';
 import { fitBuilt } from '../app/fit';
 import { fitCheck } from '../app/internals';
-import { screenPart } from '../app/screenpart';
+import { screenPart, displayComps } from '../app/screenpart';
 import { BuiltProduct } from '../scene/built';
 import { ImportedProduct } from '../scene/imported';
 import { EmptyProduct } from '../scene/empty';
@@ -50,7 +50,7 @@ export function refreshStatic() {
   if (p instanceof BuiltProduct && A.project.product.built) {
     const parts = A.project.product.built.parts;
     for (const f of fitBuilt(parts)) if (f.level !== 'ok') model.push({ level: f.level === 'err' ? 'broken' : 'warning', area: 'model', title: f.msg.replace('collides with', 'bumps into').replace('sticks out of the enclosure', 'pokes out of the case'), why: 'Two solid parts can\'t be in the same place, and electronics have to fit inside the case.', fix: 'Move or resize the part in Design, or make the case bigger (Auto build can resize it).', at: { mode: 'design' } });
-    const has = (r: string) => parts.some(x => x.role === r) || (r === 'screen' && !!screenPart(parts));
+    const has = (r: string) => parts.some(x => x.role === r) || (r === 'screen' && !!screenPart(parts, displayComps(A.project)));
     const need: [string, string, string][] = [['encoder', 'dial', 'turns'], ['tft', 'screen', 'shows the display'], ['neopixel', 'led', 'lights up'], ['button', 'press', 'can be pressed']];
     for (const [t, r, verb] of need) if (types.has(t) && !has(r) && !(r === 'press' && has('screen'))) model.push({ level: 'tip', area: 'model', title: `Nothing on the 3D model ${verb} for the ${friendly(COMPONENTS[t].name)}`, why: `Give a part the ${r === 'led' ? 'LED' : r[0].toUpperCase() + r.slice(1)} role so the ${friendly(COMPONENTS[t].name).toLowerCase()} shows up on the model.`, fix: 'Select a part in Design and set its Role, or press Auto build.', at: { mode: 'design' } });
   } else if (!(p instanceof ImportedProduct) && !(p instanceof EmptyProduct) && A.project.product.source === 'parametric') {

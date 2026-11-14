@@ -117,7 +117,7 @@ export interface Project {
     files: Record<string, string>;
     activeFile: string;
     filesEdited: boolean;
-    /** Which code "Reset code" and wiring changes regenerate: the thermostat example or an empty skeleton. */
+    /** Which code "Reset code" and wiring changes regenerate: the The First Step or an empty skeleton. */
     starter: 'thermostat' | 'blank';
     /** Parts imported from a link or defined by hand, carried with the project. */
     custom?: Record<string, CustomPartSpec>;

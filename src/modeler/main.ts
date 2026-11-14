@@ -8,6 +8,7 @@ import { BuiltProduct } from '../scene/built';
 import { listProjects, loadProject, saveProject } from '../app/store';
 import { newBuiltModel, newUid, defaultAutoOpts, type Project, type BuiltModel, type BuiltPart, type ShapeKind, type BindRole } from '../app/project';
 import { autoBuild, mergeRebuild } from '../app/autobuild';
+import { displayComps } from '../app/screenpart';
 import { fitBuilt, bounds } from '../app/fit';
 import { BOARDS } from '../hw/library/boards';
 import { COMPONENTS } from '../hw/library/components';
@@ -126,6 +127,7 @@ async function save() {
 async function reloadFromStore() {
   const p = await loadProject(S.id); if (!p) return;
   S.project = p; renderTitle();
+  S.prod?.setDisplays(displayComps(p));
   const sb = p.product.built;
   if (sb && !S.dirty && (sb.rev ?? 0) > (S.built.rev ?? 0)) { S.built = sb; S.prod!.model = sb; for (const id of [...S.sel]) if (!part(id)) S.sel.delete(id); if (S.active && !part(S.active)) S.active = null; Ed.reload(); rebuild(); report('Updated from the studio'); }
   else if (sb && !S.dirty && (sb.rev ?? 0) < (S.built.rev ?? 0) && p.product.source === 'built') scheduleSave(); // someone wrote an older copy: put ours back
@@ -1059,7 +1061,7 @@ async function load(id: string) {
   S.id = id; S.project = p;
   S.built = p.product.built ? p.product.built : newBuiltModel();
   S.built.auto ??= defaultAutoOpts();
-  S.prod = new BuiltProduct(S.built);
+  S.prod = new BuiltProduct(S.built, displayComps(p));
   // a "screen" pattern so display parts read as screens here
   const g = S.prod.screen.getContext('2d')!, gr = g.createRadialGradient(256, 200, 10, 256, 256, 300); gr.addColorStop(0, '#1b2430'); gr.addColorStop(1, '#05070a');
   g.fillStyle = gr; g.fillRect(0, 0, 512, 512); g.fillStyle = '#5b6b80'; g.font = '600 44px Inter'; g.textAlign = 'center'; g.fillText('SCREEN', 256, 270); S.prod.screenUpdated();

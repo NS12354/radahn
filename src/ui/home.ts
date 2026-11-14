@@ -51,7 +51,7 @@ export async function renderHome() {
   $('#homeSearch').style.display = all.length > 4 ? '' : 'none';
   $('#homeWarn').style.display = persistent ? 'none' : '';
   const g = $('#homeGrid'); g.innerHTML = '';
-  if (!all.length) { g.appendChild(el('div', 'hempty', 'No projects yet. Start a blank one above, or open the thermostat example to look around.')); return; }
+  if (!all.length) { g.appendChild(el('div', 'hempty', 'No projects yet. Start a blank one above, or open the The First Step to look around.')); return; }
   if (!list.length) { g.appendChild(el('div', 'hempty', `No projects match “${esc(query)}”.`)); return; }
   for (const p of list) g.appendChild(card(p));
 }
