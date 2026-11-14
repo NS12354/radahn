@@ -50,6 +50,12 @@ export function termEnv(src = process.env) {
 const loopback = (a = '') => a === '127.0.0.1' || a === '::1' || a === '::ffff:127.0.0.1';
 const safeName = (n) => typeof n === 'string' && n.length < 200 && !n.startsWith('/') && !n.split('/').includes('..') && !n.includes('\\') && !n.includes('\0');
 
+/** Write via a hidden temp file + rename, so Claude never reads a half-written file. */
+function atomicWrite(p, content) {
+  const tmp = path.join(path.dirname(p), `.${path.basename(p)}.${process.pid}.tmp`);
+  fs.writeFileSync(tmp, content);
+  fs.renameSync(tmp, p);
+}
 /** Every code file under dir, as workspace-relative paths. */
 function listCode(dir, rel = '') {
   const out = [];
@@ -88,9 +94,9 @@ export async function claudeTermApi(server) {
       const p = path.join(dir, name);
       fs.mkdirSync(path.dirname(p), { recursive: true });
       known.set(name, content);
-      if (!fs.existsSync(p) || fs.readFileSync(p, 'utf8') !== content) fs.writeFileSync(p, content);
+      if (!fs.existsSync(p) || fs.readFileSync(p, 'utf8') !== content) atomicWrite(p, content);
     };
-    const writeDocs = (docs) => { for (const [n, c] of Object.entries(docs ?? {})) if (DOCS.has(n) && typeof c === 'string') fs.writeFileSync(path.join(dir, n), c); };
+    const writeDocs = (docs) => { for (const [n, c] of Object.entries(docs ?? {})) if (DOCS.has(n) && typeof c === 'string') atomicWrite(path.join(dir, n), c); };
     const remove = (name) => { known.delete(name); fs.rmSync(path.join(dir, name), { force: true }); };
 
     function onDisk(name) {

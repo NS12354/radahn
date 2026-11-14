@@ -4,7 +4,8 @@ import type { App } from './app';
 import { $, $$, el, esc, opts, toast } from './dom';
 import { BuiltProduct } from '../scene/built';
 import { newUid, defaultAutoOpts, type BindRole, type BuiltModel, type BuiltPart, type ShapeKind } from '../app/project';
-import { autoBuild } from '../app/autobuild';
+import { autoBuild, mergeRebuild } from '../app/autobuild';
+import { screenPart } from '../app/screenpart';
 import { bounds, fitBuilt } from '../app/fit';
 import { COMPONENTS } from '../hw/library/components';
 import { track } from './track';
@@ -157,17 +158,18 @@ export async function runAutoBuild() {
   if (src === 'parametric' || src === 'imported') {
     if (!window.confirm?.(`Replace the ${src === 'parametric' ? 'built-in thermostat' : 'imported CAD'} model with one auto-built from the electronics? You can switch back from the Project menu.`)) return;
   }
-  const keep = src === 'built' && prev ? prev.parts.filter(p => !p.auto) : [];
   const o = prev?.auto ?? autoOpts();
   const r = autoBuild(A.board(), comps, o);
-  prj.product.built = { parts: [...r.parts, ...keep], xray: prev?.xray ?? false, auto: o, notes: r.notes };
+  const m = mergeRebuild(src === 'built' && prev ? prev.parts : [], r, comps, o.battery);
+  if (m.dropped.length) r.notes.unshift(`Removed ${m.dropped.join(', ')}: that hardware is no longer wired.`);
+  prj.product.built = { parts: m.parts, xray: prev?.xray ?? false, auto: o, notes: r.notes };
   prj.product.source = 'built';
   await A.rebuildProduct();
   A.setMode('design');
   A.selectPart(null);
   A.changed('product');
   track('model', `Auto-built a ${r.style === 'round' ? 'round' : 'rectangular'} enclosure (${r.size.map(Math.round).join(' × ')} mm, ${r.parts.length} parts)`, true);
-  toast(`Auto built ${r.parts.length} parts from ${comps.length} component${comps.length === 1 ? '' : 's'}${keep.length ? `, kept ${keep.length} of yours` : ''}`);
+  toast(`Auto built ${r.parts.length} parts from ${comps.length} component${comps.length === 1 ? '' : 's'}${m.kept ? `, kept ${m.kept} of yours` : ''}`);
 }
 
 // ------------------------------------------------------------------ render
@@ -220,14 +222,15 @@ export function renderModel(app: App) {
   if (!fit.length) fl.innerHTML = '<div class="empty">Mark parts as Internal to check they fit inside the shell.</div>';
 
   // roles vs electronics
-  const has = (r: BindRole) => m.parts.filter(p => p.role === r);
+  const auto = screenPart(m.parts);
+  const has = (r: BindRole) => m.parts.filter(p => p.role === r || (r === 'screen' && auto?.auto && p.id === auto.id));
   const types = new Set(app.project.electronics.comps.map(c => c.type));
   const need: [string, BindRole, string][] = [['encoder', 'dial', 'Dial'], ['tft', 'screen', 'Screen'], ['neopixel', 'led', 'LED'], ['button', 'press', 'Press']];
   const rows: string[] = [];
   for (const r of ['dial', 'screen', 'press', 'led'] as BindRole[]) {
     const ps = has(r); if (!ps.length) continue;
     const segs = r === 'led' ? ps.reduce((a, p) => a + (p.segments && p.segments > 1 ? p.segments : 1), 0) : 0;
-    rows.push(`<div class="chk ok"><i></i><span><b>${ROLES[r]}</b>: ${esc(ps.map(p => p.name).join(', '))}${segs > 1 ? ` · ${segs} lit segments` : ''}</span></div>`);
+    rows.push(`<div class="chk ok"><i></i><span><b>${ROLES[r]}</b>: ${esc(ps.map(p => p.name).join(', '))}${segs > 1 ? ` · ${segs} lit segments` : ''}${r === 'screen' && auto?.auto ? ' <em>(picked automatically from its name; set a part\'s Role to Screen to choose another)</em>' : ''}</span></div>`);
   }
   for (const [t, r, label] of need) if (types.has(t) && !has(r).length && !(r === 'press' && has('screen').length))
     rows.push(`<div class="chk warn"><i></i><span>${esc(COMPONENTS[t].name)} is wired, but no part has the <b>${label}</b> role, so it won't show on the model.</span></div>`);

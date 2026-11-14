@@ -7,7 +7,7 @@ import { View, type Shading, type ViewName } from './view';
 import { BuiltProduct } from '../scene/built';
 import { listProjects, loadProject, saveProject } from '../app/store';
 import { newBuiltModel, newUid, defaultAutoOpts, type Project, type BuiltModel, type BuiltPart, type ShapeKind, type BindRole } from '../app/project';
-import { autoBuild } from '../app/autobuild';
+import { autoBuild, mergeRebuild } from '../app/autobuild';
 import { fitBuilt, bounds } from '../app/fit';
 import { BOARDS } from '../hw/library/boards';
 import { COMPONENTS } from '../hw/library/components';
@@ -375,9 +375,11 @@ function snapOp(k: string) {
 }
 async function runAutoBuild() {
   const prj = S.project; if (!prj) return;
-  const comps = prj.electronics.comps, keep = parts().filter(p => !p.auto);
-  const r = autoBuild(BOARDS[prj.electronics.board], comps, S.built.auto ?? defaultAutoOpts());
-  commit('Auto Build', () => { S.built.parts = [...r.parts, ...keep]; S.built.notes = r.notes; S.prod!.model = S.built; S.sel.clear(); S.active = null; }, `Auto built ${r.parts.length} parts from ${comps.length} component${comps.length === 1 ? '' : 's'}${keep.length ? `, kept ${keep.length} of yours` : ''}`);
+  const comps = prj.electronics.comps, o = S.built.auto ?? defaultAutoOpts();
+  const r = autoBuild(BOARDS[prj.electronics.board], comps, o);
+  const m = mergeRebuild(parts(), r, comps, o.battery);
+  if (m.dropped.length) r.notes.unshift(`Removed ${m.dropped.join(', ')}: that hardware is no longer wired.`);
+  commit('Auto Build', () => { S.built.parts = m.parts; S.built.notes = r.notes; S.prod!.model = S.built; S.sel.clear(); S.active = null; }, `Auto built ${r.parts.length} parts from ${comps.length} component${comps.length === 1 ? '' : 's'}${m.kept ? `, kept ${m.kept} of yours` : ''}`);
   V.frame(); S.infoTab = 'notes'; renderInfo(); $$('#infoTabs button').forEach(b => b.classList.toggle('on', b.dataset.i === 'notes'));
 }
 function setShading(s: Shading) { V.shading = s; V.refreshMaterials(); Ed.refresh(); renderHeader(); }

@@ -314,3 +314,21 @@ export function autoBuild(board: BoardDef, comps: CompInstance[], o: AutoBuildOp
   if (fit.length) notes.push(`Fit check: ${fit.length} issue${fit.length > 1 ? 's' : ''}. See the fit list.`);
   return { parts, notes, size: [W, H, D], style };
 }
+
+/**
+ * Combine a fresh auto build with the parts you made or kept.
+ * - Your own shapes (not tied to electronics) are always kept.
+ * - Model parts of hardware that is no longer wired are dropped, so a rebuild
+ *   never brings back electronics you removed from the bench.
+ * - If you kept a part of hardware that is still wired, yours replaces the
+ *   freshly built part of the same name (no duplicates).
+ */
+export function mergeRebuild(prev: BuiltPart[], built: AutoBuildResult, comps: CompInstance[], battery: boolean): { parts: BuiltPart[]; kept: number; dropped: string[] } {
+  const wired = new Set<string>(['board', ...comps.map(c => c.uid), ...(battery ? ['battery'] : [])]);
+  const mine = prev.filter(p => !p.auto);
+  const dropped = mine.filter(p => p.comp && !wired.has(p.comp));
+  const keep = mine.filter(p => !dropped.includes(p));
+  const taken = new Set(keep.filter(p => p.comp).map(p => `${p.comp}\u0000${p.name}`));
+  const fresh = built.parts.filter(p => !(p.comp && taken.has(`${p.comp}\u0000${p.name}`)));
+  return { parts: [...fresh, ...keep], kept: keep.length, dropped: [...new Set(dropped.map(p => p.name))] };
+}

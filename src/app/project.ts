@@ -81,7 +81,7 @@ export interface BuiltModel {
   rev?: number;
 }
 
-export const defaultAutoOpts = (): AutoBuildOpts => ({ style: 'auto', wall: 2, clearance: 1, battery: false, mount: 'wall' });
+export const defaultAutoOpts = (): AutoBuildOpts => ({ style: 'auto', wall: 2, clearance: 1, battery: false, mount: 'none' });
 
 /** A fresh built model: one rounded-box housing, like Blender's default cube. */
 export function newBuiltModel(): BuiltModel {

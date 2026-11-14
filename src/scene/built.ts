@@ -5,6 +5,7 @@ import { FINISHES } from './parametric';
 import type { BuiltModel, BuiltPart } from '../app/project';
 import { instances } from '../app/fit';
 import { partMeshGeometry } from './mesh';
+import { screenPart } from '../app/screenpart';
 
 /**
  * A product made of primitives (by hand in the modeler, or by auto build).
@@ -75,6 +76,16 @@ function material(p: BuiltPart) {
 
 interface RootData { part: BuiltPart; base: THREE.Vector3; baseQ: THREE.Quaternion }
 
+/** The display as a panel on a solid part's front face (local +Z), slightly proud of it. */
+function frontPanel(p: BuiltPart): THREE.BufferGeometry {
+  const [w, h, d] = p.size;
+  const round = ['cyl', 'cone', 'sphere', 'torus', 'tube'].includes(p.shape);
+  const zOff = p.shape === 'sphere' ? d / 2 * 0.98 : d / 2 + 0.05;
+  if (round) { const r = p.shape === 'tube' && p.param ? Math.min(p.param, Math.min(w, h)) / Math.min(w, h) : 0.94; return new THREE.CircleGeometry(0.5 * r, 96).scale(w, h, 1).translate(0, 0, zOff); }
+  const inset = p.shape === 'rbox' ? Math.max(0.6, 1 - 2 * (p.param ?? 0) / Math.min(w, h)) : 0.94;
+  return new THREE.PlaneGeometry(w * inset, h * inset).translate(0, 0, zOff);
+}
+
 export class BuiltProduct extends Product {
   /** Millimetre space: everything the modeler edits lives in here. */
   mm = new THREE.Group();
@@ -86,6 +97,8 @@ export class BuiltProduct extends Product {
   private explodeT = 0;
   private explodeGoal = 0;
   private pressDepth = 0;
+  /** The part showing the display (Screen role, or picked automatically by name). */
+  screenOn: { id: string; auto: boolean } | null = null;
   /** Exploded view: mm per layer step, from the model's depth. */
   private explStep = 8;
   private faded = -1;
@@ -103,6 +116,7 @@ export class BuiltProduct extends Product {
   /** Rebuild every part's meshes from the model. */
   build() {
     this.clearParts();
+    this.screenOn = screenPart(this.model.parts);
     const dial = this.model.parts.filter(p => p.role === 'dial');
     this.pivot.on = dial.length > 0;
     if (dial[0]) {
@@ -135,7 +149,12 @@ export class BuiltProduct extends Product {
       this.ledMats.push(m); this.ownMats.push(m); geos.push({ g: shapeGeometry(p, { i, n: segs }), m });
     } else {
       let m: THREE.Material;
-      if (p.role === 'screen') m = this.screenMat;
+      const isScreen = this.screenOn?.id === p.id;
+      // flat parts (and meshes given the Screen role, which get planar UVs) show the display across their face;
+      // solid parts keep their look and get the display as a panel on their front (+Z) face
+      const whole = isScreen && (p.shape === 'disc' || p.shape === 'rect' || (p.shape === 'mesh' && !this.screenOn!.auto));
+      if (isScreen && !whole) geos.push({ g: frontPanel(p), m: this.screenMat });
+      if (whole) m = this.screenMat;
       else if (p.role === 'led') { const lm = new THREE.MeshStandardMaterial({ color: new THREE.Color(p.color), emissive: 0, roughness: 0.5 }); this.ledMats.push(lm); m = lm; this.ownMats.push(m); }
       else { m = material(p); this.ownMats.push(m); }
       geos.push({ g: shapeGeometry(p), m });
@@ -191,13 +210,13 @@ export class BuiltProduct extends Product {
         v.copy(d.base).sub(this.pivot.c).applyQuaternion(q); r.position.copy(this.pivot.c).add(v);
         r.quaternion.premultiply(q);
       }
-      if ((p.role === 'press' || p.role === 'screen') && this.pressDepth) r.position.z -= this.pressDepth * 0.8;
+      if ((p.role === 'press' || p.role === 'screen' || p.id === this.screenOn?.id) && this.pressDepth) r.position.z -= this.pressDepth * 0.8;
       if (this.explodeT) r.position.z += (p.layer ?? 0) * this.explStep * this.explodeT;
     }
   }
 
   pickables() { const out: THREE.Object3D[] = []; for (const r of this.roots.values()) if (r.visible) r.traverse(o => { if ((o as any).isMesh) out.push(o); }); return out; }
-  roleOf(o: THREE.Object3D): Role { return (this.model.parts.find(p => p.id === o.userData.part)?.role as Role) ?? 'body'; }
+  roleOf(o: THREE.Object3D): Role { if (o.userData.part && o.userData.part === this.screenOn?.id) return 'screen' as Role; return (this.model.parts.find(p => p.id === o.userData.part)?.role as Role) ?? 'body'; }
   partOf(o: THREE.Object3D) { return o.userData.part as string; }
   dialCenter() { return this.mm.localToWorld(this.pivot.c.clone()); }
   explode(t: number) { this.explodeGoal = t; }
