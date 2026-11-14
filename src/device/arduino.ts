@@ -102,7 +102,7 @@ export function mountArduino(root: HTMLElement, ws: Workspace) {
   const offCompile = on('compile', m => {
     if (m.ok === null) { output(m.text, 'dim'); return; }
     if (m.ok) { output(m.text.trim(), ''); if (phase === 'verify') { toast('Done compiling.'); phase = 'idle'; } else if (phase === 'upload') output('Uploading…', 'dim'); }
-    else { output(m.text, 'err'); output('Compilation error: exit status 1', 'err'); for (const x of explainCompile(m.text, ws.files())) output(`💡 ${x.title}${x.fix ? '. ' + x.fix : ''}`, 'hint'); toast('Compilation error: exit status 1', true); phase = 'idle'; }
+    else { output(m.text, 'err'); output('Compilation error: exit status 1', 'err'); for (const x of explainCompile(m.text, ws.files())) output(`💡 ${x.title}${x.fix ? '. ' + x.fix : ''}`.replace(/`/g, ''), 'hint'); toast('Compilation error: exit status 1', true); phase = 'idle'; }
   });
   const offStatus = on('status', m => {
     if (phase === 'upload' && m.running) { output(`avrdude: ${b.chip} on ${port} written and verified.`, ''); output('Done uploading.', ''); toast('Done uploading.'); phase = 'idle'; }

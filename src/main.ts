@@ -8,7 +8,7 @@ import { Bench } from './hw/bench';
 import { BOARDS } from './hw/library/boards';
 import { audio } from './hw/audio';
 import { blankProject, defaultProject, parseProject, serializeProject, type Project } from './app/project';
-import { deleteProject, getMeta, loadProject, migrateLegacy, newProjectId, saveProject } from './app/store';
+import { deleteProject, getMeta, loadProject, migrateLegacy, newProjectId, saveProject, journalWrite, journalClear, journalRecover } from './app/store';
 import { EmptyProduct } from './scene/empty';
 import { BuiltProduct } from './scene/built';
 import { ElectronicsView } from './scene/electronics';
@@ -19,6 +19,10 @@ import { listen, modelerUrl, post } from './app/sync';
 import { BlenderLink } from './app/blenderlink';
 import { initDeviceBridge, notifyDevice } from './ui/devicebridge';
 import { initHealth, refreshStatic, resetHealth } from './ui/health';
+import { initGitHub, showGitHub } from './ui/github';
+import { initClaude, claudeFilesChanged, claudeContextChanged, closeClaude } from './ui/claude';
+import { initPlan, render as renderPlan, resetPlanUndo } from './ui/plan';
+import { track } from './ui/track';
 import type { App, Mode } from './ui/app';
 import { $, $$, b64decode, b64encode, closeModal, copyText, download, modal, toast } from './ui/dom';
 import { initDesign, renderDesign } from './ui/design';
@@ -34,6 +38,8 @@ const HINTS: Record<Mode, string> = {
   proto: '<b>Prototype</b> · drag the dial to turn · click the display to press · hold to long-press',
   elec: '<b>Electronics</b> · wire a board, press <b>Run</b>, then turn the dial and press the display: they drive the firmware',
   review: '<b>Review</b> · click the model to pin a comment',
+  plan: '<b>Plan</b> · what\'s done and what\'s left',
+  github: '<b>GitHub</b> · drag code from your repositories into Electronics',
 };
 
 class FormframeApp implements App {
@@ -51,6 +57,7 @@ class FormframeApp implements App {
   private elecT: any = null;
   private devT: any = null;
   private hT: any = null;
+  private clT: any = null;
   private saveT: any = null;
   private dirHandle: any = null;
   /** Store id of the open project; null for a scratch session (the tour) that is never saved. */
@@ -67,10 +74,15 @@ class FormframeApp implements App {
 
   async boot() {
     await migrateLegacy();
+    const restored = await journalRecover();
+    if (restored) setTimeout(() => toast(`Recovered unsaved changes from your last session`), 800);
     await this.rebuildProduct();
     initModeler(this);
     initDeviceBridge(this, () => this.projectId);
     initHealth(this);
+    initPlan(this);
+    initGitHub(this);
+    initClaude(this);
     initDesign(this, f => this.importCad(f));
     initProto(this);
     initElec(this);
@@ -104,6 +116,7 @@ class FormframeApp implements App {
     if (what === 'electronics' || what === 'product') { clearTimeout(this.hT); this.hT = setTimeout(() => refreshStatic(), 150); }
     if (what === 'electronics' || what === 'meta') { clearTimeout(this.devT); this.devT = setTimeout(() => notifyDevice(), 200); }
     if (what === 'electronics' || what === 'product') { clearTimeout(this.elecT); this.elecT = setTimeout(() => this.refreshElectronics(), 150); }
+    if (what === 'electronics') { clearTimeout(this.clT); this.clT = setTimeout(() => { claudeFilesChanged(); claudeContextChanged(); }, 250); }
     clearTimeout(this.saveT);
     this.saveT = setTimeout(() => this.flush(), 400);
   }
@@ -116,7 +129,7 @@ class FormframeApp implements App {
     if (!atHome() && (forceThumb || Date.now() - this.lastThumb > 5000)) { thumb = this.thumbnail(); this.lastThumb = Date.now(); }
     const b = this.project.product.built;
     if (b) { const sig = JSON.stringify({ ...b, rev: 0 }); if (sig !== this.builtSig) { b.rev = (b.rev ?? 0) + 1; this.builtSig = sig; } }
-    try { await saveProject(this.projectId, this.project, thumb, edited); post({ type: 'saved', id: this.projectId }); this.blender.changed(); }
+    try { await saveProject(this.projectId, this.project, thumb, edited); journalClear(this.projectId); post({ type: 'saved', id: this.projectId }); this.blender.changed(); }
     catch (e: any) { toast('Could not save: ' + (e?.message ?? e)); }
   }
 
@@ -132,6 +145,7 @@ class FormframeApp implements App {
     if (this.product instanceof BuiltProduct) { this.product.model = nb; this.product.build(); this.selected = null; renderDesign(this); }
     else { await this.rebuildProduct(); renderDesign(this); }
     this.refreshElectronics();
+    track('model', 'Edited the model in the 3D modeler');
     this.blender.changed();
   }
   private builtSig = '';
@@ -146,6 +160,7 @@ class FormframeApp implements App {
       if (this.product instanceof BuiltProduct) { this.product.model = b; this.product.build(); renderDesign(this); }
       else { await this.rebuildProduct(); renderDesign(this); }
       this.refreshElectronics();
+      track('model', note);
       await this.flush(false, true);
       toast(note);
     },
@@ -225,7 +240,7 @@ class FormframeApp implements App {
     if (touring()) endTour();
     if (document.body.classList.contains('present')) $('#bPresent').click();
     await this.flush(true, !!this.saveT);
-    stopElec(); stopIdle();
+    stopElec(); stopIdle(); closeClaude();
     this.dirHandle = null;
     this.blender.stop();
     showHome();
@@ -304,6 +319,8 @@ class FormframeApp implements App {
       g.fillStyle = '#3a3f47'; g.font = '500 22px Inter'; g.textAlign = 'center'; g.fillText('Display off · press Run', 256, 256); this.product.screenUpdated();
     }
     stopIdle(); if (m === 'proto') armIdle(this);
+    if (m === 'plan') renderPlan();
+    if (m === 'github') showGitHub();
     syncGizmo(this);
     this.product.highlight(m === 'design' ? this.selected : null);
     renderPins(this); renderLive(this);
@@ -318,13 +335,14 @@ class FormframeApp implements App {
   /** Show a project in the editor. `id` is its store id, or null for an unsaved scratch session. */
   async load(p: Project, msg: string, id: string | null) {
     stopElec();
+    if (id !== this.projectId) closeClaude();
     if (this.projectId && this.projectId !== id) await this.flush(true, !!this.saveT);
     if (this.blender.linked && id !== this.projectId) this.blender.stop();
     this.projectId = id; this.lastThumb = 0;
     this.project = p;
     if (id) this.blender.resume(id);
     setTimeout(() => notifyDevice(), 0);
-    resetHealth();
+    resetHealth(); resetPlanUndo();
     this.builtSig = p.product.built ? JSON.stringify({ ...p.product.built, rev: 0 }) : '';
     this.bench.env = p.env;
     this.sm = { state: 'home', target: 22, room: p.env.roomC };
@@ -362,6 +380,7 @@ class FormframeApp implements App {
       this.viewport.frame(this.product.group);
       this.setMode('design'); this.selectPart(null); redrawScreen(this);
       this.refreshElectronics();
+      track('model', `Imported the CAD model ${f.name}`);
       this.changed('product');
       toast(`${f.name}: ${(this.product as ImportedProduct).meshes.size} meshes. Assign roles in the Parts list.`);
     } catch (e: any) { toast('Import failed: ' + e.message); }
@@ -386,6 +405,7 @@ class FormframeApp implements App {
     this.setMode('design');
     this.selectPart(fresh ? pr.built.parts[0]?.id ?? null : null);
     renderDesign(this); this.changed('product');
+    track('model', fresh ? 'Started building a model' : 'Switched back to the built model');
     toast(fresh ? 'Started with a housing. Add shapes from the left panel.' : 'Back to your built model');
   }
 
@@ -443,8 +463,10 @@ class FormframeApp implements App {
     $('#eBuild').onclick = () => this.startBuild();
     $('#eParam').onclick = async () => { this.project.product.source = 'parametric'; await this.rebuildProduct(); renderDesign(this); this.changed('product'); };
     $$('#vpEmpty a[data-m]').forEach(a => (a.onclick = () => this.setMode(a.dataset.m as Mode)));
-    document.addEventListener('visibilitychange', () => { if (document.hidden && this.saveT) this.flush(); });
-    window.addEventListener('pagehide', () => { if (this.saveT) this.flush(); });
+    // closing or hiding the tab: journal pending changes synchronously, then try the normal save
+    const unload = () => { if (this.saveT && this.projectId) { journalWrite(this.projectId, this.project); this.flush(); } };
+    document.addEventListener('visibilitychange', () => { if (document.hidden) unload(); });
+    window.addEventListener('pagehide', unload);
     ($('#pname') as HTMLInputElement).oninput = e => { this.project.name = (e.target as HTMLInputElement).value; this.changed('meta'); };
     $('#bExplode').onclick = () => {
       this.exploded = !this.exploded; $('#bExplode').classList.toggle('on', this.exploded);

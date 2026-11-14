@@ -79,6 +79,50 @@ The light next to the project name answers that at a glance: **Working** (green)
 
 Advice that only matters on real hardware (power budgets, level shifting) shows as tips, so it doesn't turn the light amber.
 
+## GitHub: bring code from your repositories
+
+The **GitHub** tab signs in to GitHub, lists your repositories, and lets you browse any branch and preview files.
+Drag a file or a whole folder onto the **Electronics** tab (hovering it opens it) or onto the code panel, or tick files and press **Add to Electronics**.
+Files land where the board expects them: on MicroPython boards `main.py`/`code.py` become `main.py` and other `.py` files go in `lib/`; on Arduino a `.ino` replaces the sketch and `.h/.cpp` sit beside it; a `.hex` is used as firmware. You're asked before anything is replaced. Files from your desktop can be dropped the same way.
+
+- **Sign in with GitHub** uses GitHub's device flow: set `GITHUB_CLIENT_ID` in `.env` (an OAuth App with *Enable Device Flow* ticked) and restart.
+- Or paste a **personal access token** (`repo` scope, or fine-grained with Contents: read).
+- The token is held by the Formframe server in a session tied to an httpOnly cookie; the browser never sees it. Sessions are in memory, so restarting the server signs you out.
+
+## Claude Code in Electronics
+
+In **Electronics**, the **✻ Claude Code** tab beside the Serial monitor runs the real [Claude Code](https://docs.claude.com/en/docs/claude-code) CLI in a terminal. Ask it to write or fix your firmware; files it creates or edits appear in the code tabs as it works (the tab flashes), and edits you make in the editor reach it too. Press **Wide** for a bigger terminal.
+
+- **Wiring and hardware.** The folder also has `wiring.json` (every part on the bench and its pins, as board labels like `GP16`) and `PARTS.md` (the parts and boards Claude can choose from, with each board's pins). Claude edits `wiring.json`:
+  - moving pins of parts already on the bench applies straight away;
+  - adding or removing parts, or changing the board, shows an **Approve / Decline** card in the Claude panel and changes nothing until you approve (Claude is also told to ask you in the chat first);
+  - bad edits (a pin the board doesn't have, an unknown part) are rejected.
+  After each edit Formframe rewrites `wiring.json` with what is actually wired and a `_status` line (applied / approved / declined / why it was rejected), so Claude knows the outcome. Every change is logged in the Plan.
+- Each project gets its own folder at `~/.formframe/workspaces/<project id>/` holding the project's code plus a generated `CLAUDE.md` (board, language, every wired part and its pins, house rules), so Claude knows what it's coding for. Only code files (`.py`, `.ino`, `.h`, `.cpp`, `.c`) sync back.
+- Needs `claude` installed and signed in (`npm install -g @anthropic-ai/claude-code`). Set `CLAUDE_PATH` in the environment if it isn't on your shell's PATH. The first time in each project folder Claude asks whether to trust it.
+- It runs commands on the machine running the Formframe server, so the server only accepts terminal connections from this computer (loopback address and same-origin page). It is not for a shared or hosted deployment.
+- The terminal uses `node-pty`, a native module. If your npm blocks install scripts, run `npm install-scripts approve node-pty` then `npm rebuild node-pty`.
+
+## Plan: what's done and what's left
+
+The **Plan** tab keeps track of the project:
+
+- **Milestones** tick themselves from the project: parts added, everything wired, code runs without errors, Test it passes, 3D model made, electronics fit the case, model shows the electronics, interactions designed, review comments cleared.
+- **Tasks**: your own To do / In progress / Done board. Type a task and press Enter; drag cards between columns; double-click to rename.
+- **Activity** records what you do automatically: code runs and crashes, Test it results, compiles, parts added and rewired, board switches, code edits, auto builds, model edits from the 3D modeler or Blender, interactions and review comments.
+- **Update with AI** sends Claude the project (parts, wiring, your code, milestones, problems, recent activity and tasks). It marks tasks done only with evidence from the project, records finished work you didn't list, summarizes where things stand, names the next step, and suggests tasks you can add. It runs only when you click, needs `ANTHROPIC_API_KEY`, and **Undo** reverses an update.
+
+The plan is saved inside the project file.
+
+## Testing
+
+```
+npm test            # unit tests (the Arduino compile test needs npm run setup:toolchain)
+npm run test:e2e    # browser tests: studio, modeler, IDE windows, emulators, Blender link (skipped without Blender)
+```
+
+End-to-end tests need Chromium: run `npx playwright install chromium` once, or point `FF_CHROMIUM` at an existing build. CI (`.github/workflows/ci.yml`) runs the typecheck, unit tests, build and browser tests on every push.
+
 ## Coding like on the real board
 
 In Electronics, the button next to **Run** opens the board's own coding environment in a separate window. The studio keeps running the emulator, the bench and the 3D model, and the window edits files, runs code and shows serial output through it.

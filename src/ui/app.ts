@@ -5,7 +5,7 @@ import type { Bench } from '../hw/bench';
 import type { BoardDef } from '../hw/types';
 import type { SMState } from '../proto/stateMachine';
 
-export type Mode = 'design' | 'proto' | 'elec' | 'review';
+export type Mode = 'design' | 'proto' | 'elec' | 'review' | 'plan' | 'github';
 
 /** What every panel can reach. Implemented in main.ts. */
 export interface App {
@@ -18,9 +18,11 @@ export interface App {
   base: string;
   board(): BoardDef;
   /** Persist (autosave) after a change. */
-  changed(what?: 'product' | 'electronics' | 'interactions' | 'review' | 'meta'): void;
+  changed(what?: 'product' | 'electronics' | 'interactions' | 'review' | 'meta' | 'plan'): void;
   setMode(m: Mode): void;
   rebuildProduct(): Promise<void>;
   selectPart(part: string | null): void;
   selected: string | null;
+  /** Store id of the open project (null for the tour's scratch copy). */
+  projectId: string | null;
 }

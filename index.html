@@ -44,6 +44,8 @@
     <button data-m="proto">Prototype</button>
     <button data-m="elec">Electronics</button>
     <button data-m="review">Review</button>
+    <button data-m="plan">Plan</button>
+    <button data-m="github">GitHub</button>
   </div>
   <div class="tb">
     <button class="btn" id="bModeler" title="Open this project in the Blender-style 3D modeler (separate window)">3D Modeler ↗</button>
@@ -169,9 +171,16 @@
         <button class="btn" id="bCompile">Compile</button>
         <button class="btn primary" id="bRun">▶ Run</button>
       </div>
-      <div class="serhead">Serial monitor <span id="runState"></span><button class="btn" id="bClr">Clear</button></div>
+      <div class="serhead"><button class="ptab on" id="tabSerial">Serial monitor</button><button class="ptab" id="tabClaude" title="Ask Claude Code to write or fix this code">✻ Claude Code</button><span id="runState"></span><button class="btn" id="bClr">Clear</button></div>
       <div id="serial"></div>
       <div id="serialIn"><input id="serialInput" placeholder="Send to REPL / Serial  (Enter · Ctrl-C to interrupt)" spellcheck="false"></div>
+      <div id="claudePane">
+        <div class="clbar"><span class="clstatus" id="clStatus"></span><span class="cldir" id="clDir" title=""></span><button class="btn" id="clWide">⇤ Wide</button><button class="btn" id="clRestart">Restart</button></div>
+        <div id="clAsk" role="alertdialog" aria-label="Approve Claude's hardware change"></div>
+        <div id="clNotice" class="clnotice"></div>
+        <div id="claudeTerm"></div>
+        <div class="clnote">Claude edits the code tabs and the wiring. Pin moves apply right away; new hardware waits for your Approve. Press ▶ Run to try changes.</div>
+      </div>
     </div>
 
     <div class="mode-only mr">
@@ -195,6 +204,38 @@
     <div id="homeGrid"></div>
   </div>
 </div>
+
+<section id="ghView" aria-label="GitHub">
+  <div class="ghcol ghleft" id="ghLeft"></div>
+  <div class="ghcol ghmid" id="ghMid"></div>
+  <div class="ghcol ghright" id="ghRight"></div>
+</section>
+
+<section id="planView" aria-label="Plan">
+  <div class="plcol plleft">
+    <div class="plh"><h2>Milestones</h2><span id="plMsCount"></span></div>
+    <div class="plbar"><i id="plMsBar"></i></div>
+    <div id="plMs"></div>
+    <p class="plnote">These tick themselves from your project: wiring, test results, the model and more.</p>
+  </div>
+  <div class="plcol plmain">
+    <div class="plh"><h2>Tasks</h2></div>
+    <div class="pladd"><input id="plNew" placeholder="Add a task, e.g. Finish the Raspberry Pi code" spellcheck="false"><select id="plArea"></select><button class="btn primary" id="plAdd">Add</button></div>
+    <div class="kanban">
+      <div class="plk" id="plCol-todo"><div class="plkh">To do <span class="plcount"></span></div><div class="plcards"></div></div>
+      <div class="plk" id="plCol-doing"><div class="plkh">In progress <span class="plcount"></span></div><div class="plcards"></div></div>
+      <div class="plk" id="plCol-done"><div class="plkh">Done <span class="plcount"></span></div><div class="plcards"></div></div>
+    </div>
+  </div>
+  <div class="plcol plright">
+    <div class="plh"><h2>AI tracker</h2><button class="btn" id="plUndo" hidden>Undo</button></div>
+    <button class="btn primary plai" id="plAiBtn">✦ Update with AI</button>
+    <div id="plAi"></div>
+    <div id="plSug"></div>
+    <div class="plh" style="margin-top:14px"><h2>Activity</h2></div>
+    <div id="plLog"></div>
+  </div>
+</section>
 
 <aside id="problems" aria-label="Is it working?">
   <div class="phd"><b>Is it working?</b><button class="btn" id="pClose" title="Close">✕</button></div>

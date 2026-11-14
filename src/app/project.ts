@@ -4,6 +4,7 @@ import { COMPONENTS, KIT } from '../hw/library/components';
 import { blankFiles, defaultFiles } from '../hw/templates';
 import type { BoardDef } from '../hw/types';
 import { registerCustom, type CustomPartSpec } from '../hw/custom';
+import { emptyPlan, type PlanData } from './plan';
 
 /**
  * Project file format (project.formframe.json). Plain JSON, stable key order,
@@ -123,6 +124,8 @@ export interface Project {
   };
   env: { roomC: number; rh: number };
   comments: Comment[];
+  /** Plan tab: tasks, activity log, milestones, AI summary */
+  plan?: PlanData;
 }
 
 const COLORS = ['#ff7a2f', '#3aa0ff', '#33c27f', '#e5c07b', '#c678dd', '#56b6c2', '#ff5c8a', '#a0a0ff', '#ffd166', '#8ce99a', '#f78c6c', '#89ddff'];
@@ -208,6 +211,7 @@ export function parseProject(json: string): Project {
   if (typeof p.version !== 'number' || p.version > FORMAT_VERSION) throw new Error(`Unsupported project version ${p.version}.`);
   const d = defaultProject();
   const merged: Project = { ...d, ...p, product: { ...d.product, ...p.product, parametric: { ...d.product.parametric, ...p.product?.parametric } }, electronics: { ...d.electronics, ...p.electronics }, env: { ...d.env, ...p.env } };
+  merged.plan = { ...emptyPlan(), ...(p.plan ?? {}) };
   if (merged.product.built) merged.product.built = { ...merged.product.built, xray: !!merged.product.built.xray, notes: merged.product.built.notes ?? [], auto: { ...defaultAutoOpts(), ...merged.product.built.auto } };
   for (const s of Object.values(merged.electronics.custom ?? {})) if (s?.id && Array.isArray(s.roles)) registerCustom(s);
   if (!BOARDS[merged.electronics.board]) throw new Error(`Unknown board "${merged.electronics.board}".`);

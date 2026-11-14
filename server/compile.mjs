@@ -199,6 +199,13 @@ async function compileArduinoCli(files, boardId) {
   } finally { fs.rm(work, { recursive: true, force: true }); }
 }
 
+/** Is any AVR toolchain installed (arduino-cli, or avr-gcc + vendored core)? */
+export async function toolchainAvailable() {
+  if (await has('arduino-cli')) return 'arduino-cli';
+  if (fss.existsSync(path.join(CORE, 'cores/arduino/Arduino.h')) && await has('avr-gcc')) return 'avr-gcc';
+  return null;
+}
+
 export async function compileSketch({ files, board = 'uno' }) {
   if (process.env.FF_USE_ARDUINO_CLI !== '0' && await has('arduino-cli')) return compileArduinoCli(files, board);
   return compileFallback(files, board);

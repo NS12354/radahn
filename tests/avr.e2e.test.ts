@@ -5,13 +5,17 @@ import { COMPONENTS, KIT } from '../src/hw/library/components';
 import { AVRRuntime } from '../src/hw/runtimes/avr';
 import { defaultFiles } from '../src/hw/templates';
 // @ts-ignore - plain JS module
-import { compileSketch } from '../server/compile.mjs';
+import { compileSketch, toolchainAvailable } from '../server/compile.mjs';
 
 const wait = (ms: number) => new Promise(r => setTimeout(r, ms));
 async function until(fn: () => boolean, ms: number) { const t = Date.now(); while (!fn()) { if (Date.now() - t > ms) return false; await wait(50); } return true; }
 
-describe('Arduino Uno: compiled thermostat sketch on avr8js', () => {
-  it('compiles with avr-gcc and drives every virtual device', async () => {
+const toolchain = await toolchainAvailable();
+if (!toolchain && process.env.FF_REQUIRE_TOOLCHAIN === '1') throw new Error('No AVR toolchain: run npm run setup:toolchain');
+if (!toolchain) console.warn('Skipping the Arduino compile test: no AVR toolchain (run npm run setup:toolchain).');
+
+describe.skipIf(!toolchain)('Arduino Uno: compiled thermostat sketch on avr8js', () => {
+  it(`compiles with ${toolchain ?? 'a toolchain'} and drives every virtual device`, async () => {
     const board = BOARDS.uno;
     const comps = KIT.map((t, i) => { const pins: Record<string, number> = {}; COMPONENTS[t].roles.forEach((r, k) => (pins[r.id] = KIT_PRESETS.uno[t][k])); return { uid: 'c' + i, type: t, pins, color: '#fff' }; });
     const files = defaultFiles(board, comps);

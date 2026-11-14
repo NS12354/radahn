@@ -87,3 +87,29 @@ export async function migrateLegacy() {
   try { await saveProject(newProjectId(), parseProject(s)); } catch { /* unreadable: drop it */ }
   try { localStorage.removeItem(LEGACY_LS_KEY); } catch { }
 }
+
+// ------------------------------------------------------------------ unload journal
+// IndexedDB writes are asynchronous and can be cut off when a tab closes.
+// localStorage writes are synchronous, so pending changes are journalled
+// there on pagehide and restored into the store on the next start.
+const J = 'formframe.journal.';
+export function journalWrite(id: string, p: Project) {
+  try { localStorage.setItem(J + id, JSON.stringify({ t: Date.now(), body: serializeProject(p) })); return true; } catch { return false; } // over quota (large CAD): best effort
+}
+export function journalClear(id: string) { try { localStorage.removeItem(J + id); } catch { } }
+/** Restore every journalled project that is newer than its stored copy. Returns how many were restored. */
+export async function journalRecover() {
+  let keys: string[] = [];
+  try { keys = Object.keys(localStorage).filter(k => k.startsWith(J)); } catch { return 0; }
+  let n = 0;
+  for (const k of keys) {
+    const id = k.slice(J.length);
+    try {
+      const j = JSON.parse(localStorage.getItem(k) ?? 'null');
+      const meta = await getMeta(id);
+      if (j?.body && (!meta || j.t > meta.updated)) { await saveProject(id, parseProject(j.body)); n++; }
+    } catch { /* unreadable journal: drop it */ }
+    journalClear(id);
+  }
+  return n;
+}

@@ -1,6 +1,8 @@
 import { defineConfig, loadEnv, type Plugin } from 'vite';
 import { fileURLToPath } from 'node:url';
 import { blenderApi } from './server/blender.mjs';
+import { githubApi } from './server/github.mjs';
+import { claudeTermApi } from './server/claude-term.mjs';
 
 /**
  * Dev-server API: POST /api/compile { files, board } → { hex, log, toolchain }
@@ -58,13 +60,34 @@ function partApi(): Plugin {
   };
 }
 
+/** Dev-server API: POST /api/plan { context } → AI progress update (server/plan-ai.mjs). */
+function planApi(): Plugin {
+  return {
+    name: 'formframe-plan-api',
+    configureServer(server) {
+      server.middlewares.use('/api/plan', (req, res) => {
+        if (req.method !== 'POST') { res.statusCode = 405; return res.end(); }
+        let body = '';
+        req.on('data', c => { body += c; if (body.length > 1e6) req.destroy(); });
+        req.on('end', async () => {
+          res.setHeader('content-type', 'application/json');
+          try {
+            const { planWithAI } = await import('./server/plan-ai.mjs');
+            res.end(JSON.stringify(await planWithAI(JSON.parse(body).context)));
+          } catch (e: any) { res.statusCode = 400; res.end(JSON.stringify({ error: e.message })); }
+        });
+      });
+    },
+  };
+}
+
 export default defineConfig(({ mode }) => {
   // Server-side settings from .env (Vite only exposes VITE_* to the browser, and never these).
   const env = loadEnv(mode, process.cwd(), '');
-  for (const k of ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'BLENDER_PATH']) if (env[k] && !process.env[k]) process.env[k] = env[k];
+  for (const k of ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'BLENDER_PATH', 'GITHUB_CLIENT_ID']) if (env[k] && !process.env[k]) process.env[k] = env[k];
   return {
   base: './',
-  plugins: [compileApi(), partApi(), { name: 'formframe-blender-link', configureServer: blenderApi }],
+  plugins: [compileApi(), partApi(), planApi(), { name: 'formframe-blender-link', configureServer: blenderApi }, { name: 'formframe-github', configureServer: githubApi }, { name: 'formframe-claude-code', configureServer: claudeTermApi }],
   build: {
     target: 'es2022', chunkSizeWarningLimit: 2000,
     rollupOptions: { input: { studio: fileURLToPath(new URL('./index.html', import.meta.url)), modeler: fileURLToPath(new URL('./modeler.html', import.meta.url)), device: fileURLToPath(new URL('./device.html', import.meta.url)) } },

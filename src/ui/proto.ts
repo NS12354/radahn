@@ -3,6 +3,7 @@ import { $, el, opts, toast } from './dom';
 import { ACTIONS, LEDCOL, LEDS, STATES, TRIGGERS, drawScreen, step } from '../proto/stateMachine';
 import { audio } from '../hw/audio';
 import { unhandled } from './health';
+import { track } from './track';
 
 let idleTimer: any = null;
 let actx: AudioContext | null = null;
@@ -43,7 +44,7 @@ export function initProto(app: App) {
   $('#bReset').onclick = () => { Object.assign(app.sm, { state: 'home', target: 22, room: 20.5 }); app.product.resetDial(); redrawScreen(app); renderLive(app); drawGraph(app); log('↺ reset'); };
   $('#bWarm').onclick = () => { app.sm.room += 2; redrawScreen(app); renderLive(app); };
   $('#bCool').onclick = () => { app.sm.room -= 2; redrawScreen(app); renderLive(app); };
-  $('#bAddTr').onclick = () => { app.project.interactions.push({ from: app.sm.state, trig: 'press', to: 'home', act: 'none', led: 'none', hap: false, snd: true }); renderTrs(app); drawGraph(app); app.changed('interactions'); };
+  $('#bAddTr').onclick = () => { track('interaction', `Added an interaction on the ${STATES[app.sm.state]} screen`); app.project.interactions.push({ from: app.sm.state, trig: 'press', to: 'home', act: 'none', led: 'none', hap: false, snd: true }); renderTrs(app); drawGraph(app); app.changed('interactions'); };
   // simulated room drifts toward target
   setInterval(() => {
     if (app.mode === 'proto' && (app.sm.state === 'home' || app.sm.state === 'eco') && Math.abs(app.sm.target - app.sm.room) > 0.05) {
@@ -82,7 +83,7 @@ export function renderTrs(app: App) {
       (t as any)[s.dataset.k!] = s.type === 'checkbox' ? (s as HTMLInputElement).checked : s.value;
       drawGraph(app); renderScreens(app); app.changed('interactions');
     }));
-    d.querySelector<HTMLButtonElement>('.del')!.onclick = () => { app.project.interactions.splice(i, 1); renderTrs(app); drawGraph(app); renderScreens(app); app.changed('interactions'); };
+    d.querySelector<HTMLButtonElement>('.del')!.onclick = () => { track('interaction', `Deleted an interaction (${STATES[t.from]} · ${TRIGGERS[t.trig]})`); app.project.interactions.splice(i, 1); renderTrs(app); drawGraph(app); renderScreens(app); app.changed('interactions'); };
     l.appendChild(d);
   });
   $('#trCount').textContent = String(app.project.interactions.length);

@@ -2,6 +2,7 @@ import type { App } from './app';
 import { $, $$, el, esc, toast } from './dom';
 import { COMPONENTS } from '../hw/library/components';
 import type { RoleDef } from '../hw/types';
+import { track } from './track';
 import { cardKind, customOf, libraryParts, registerCustom, removeFromLibrary, saveToLibrary, specFromExtraction, type CustomPartSpec } from '../hw/custom';
 
 /**
@@ -115,6 +116,7 @@ function renderReview() {
     (e.custom ??= {})[s.id] = s;
     registerCustom(s);
     if (($('#prLib') as HTMLInputElement).checked) saveToLibrary(s);
+    track('part', `Imported the ${s.name}${s.url ? ' from a link' : ''}`);
     draft = null; renderReview(); ($('#partUrl') as HTMLInputElement).value = '';
     add(s.id);
   };

@@ -10,6 +10,7 @@ import { fitCheck } from '../app/internals';
 import { BuiltProduct } from '../scene/built';
 import { ImportedProduct } from '../scene/imported';
 import { EmptyProduct } from '../scene/empty';
+import { track } from './track';
 
 /**
  * "Is it working?" — one place that collects every problem in the project
@@ -21,6 +22,9 @@ type Source = 'wiring' | 'model' | 'setup' | 'compile' | 'runtime' | 'interactio
 let A: App;
 const buckets = new Map<Source, Explained[]>();
 let tested = false, everRan = false, runningSince = 0, testing = false;
+let lastTest: { at: string; passed: boolean; failed: number } | undefined;
+/** Progress facts for the Plan tab. */
+export const healthState = () => ({ tested, everRan, lastTest, problems: all() });
 let lastBroken = new Set<string>();
 const key = (p: Explained) => p.area + '|' + p.title;
 
@@ -30,6 +34,7 @@ function add(src: Source, p: Explained) {
   const l = buckets.get(src) ?? []; if (l.some(x => key(x) === key(p))) return;
   l.push(p); buckets.set(src, l); paint();
   if (p.level === 'broken' && !testing) { const k = key(p); if (!lastBroken.has(k)) toast(`✕ ${p.title}`); }
+  if (p.level === 'broken' && (src === 'runtime' || src === 'compile')) track(src === 'compile' ? 'compile' : 'crash', p.title, false);
 }
 export const all = () => [...buckets.values()].flat();
 
@@ -76,13 +81,13 @@ function onSerial(text: string, cls?: string) {
   }
 }
 function onStatus(running: boolean, text: string) {
-  if (running && text === 'starting') { set('runtime', []); set('silent', []); buf = ''; recent = []; runningSince = performance.now(); everRan = true; lastBroken = new Set(all().filter(p => p.level === 'broken').map(key)); }
+  if (running && text === 'starting') { track('run', `Ran the code on the ${A.board().name}`); set('runtime', []); set('silent', []); buf = ''; recent = []; runningSince = performance.now(); everRan = true; lastBroken = new Set(all().filter(p => p.level === 'broken').map(key)); }
   if (!running) runningSince = 0;
   paint();
 }
 function onCompile(text: string, ok: boolean | null) {
   if (ok === null) set('compile', []);
-  else if (ok) set('compile', []);
+  else if (ok) { set('compile', []); track('compile', 'Sketch compiled', true); }
   else set('compile', explainCompile(text, A.project.electronics.files));
 }
 /** The code was edited: errors from the last run may no longer apply. */
@@ -196,6 +201,8 @@ export async function runTest() {
     const failed = r.filter(x => x.ok === false);
     set('test', failed.map(x => ({ level: 'warning' as Level, area: 'test' as const, title: x.text, why: x.why, at: { mode: 'elec' as const } })));
     tested = !failed.length;
+    lastTest = { at: new Date().toISOString(), passed: !failed.length, failed: failed.length };
+    track('test', failed.length ? `Test it: ${r.filter(x => x.ok).length} passed, ${failed.length} failed (${failed.map(x => x.text).join('; ')})` : `Test it passed: ${r.filter(x => x.ok).length} checks (${r.filter(x => x.ok).map(x => x.text).join('; ')})`, !failed.length);
     renderTest(r, false);
     toast(failed.length ? `Test finished: ${failed.length} thing${failed.length > 1 ? 's' : ''} to fix` : 'Test passed: everything responded');
   }
@@ -261,4 +268,4 @@ export function initHealth(app: App) {
   refreshStatic();
 }
 /** A different project was opened. */
-export function resetHealth() { buckets.clear(); tested = false; everRan = false; $('#ptest').innerHTML = ''; refreshStatic(); }
+export function resetHealth() { buckets.clear(); tested = false; everRan = false; lastTest = undefined; $('#ptest').innerHTML = ''; refreshStatic(); }

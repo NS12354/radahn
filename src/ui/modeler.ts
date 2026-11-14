@@ -7,6 +7,7 @@ import { newUid, defaultAutoOpts, type BindRole, type BuiltModel, type BuiltPart
 import { autoBuild } from '../app/autobuild';
 import { bounds, fitBuilt } from '../app/fit';
 import { COMPONENTS } from '../hw/library/components';
+import { track } from './track';
 
 /**
  * Design-mode panels for built models: part list, shape palette, inspector,
@@ -165,6 +166,7 @@ export async function runAutoBuild() {
   A.setMode('design');
   A.selectPart(null);
   A.changed('product');
+  track('model', `Auto-built a ${r.style === 'round' ? 'round' : 'rectangular'} enclosure (${r.size.map(Math.round).join(' × ')} mm, ${r.parts.length} parts)`, true);
   toast(`Auto built ${r.parts.length} parts from ${comps.length} component${comps.length === 1 ? '' : 's'}${keep.length ? `, kept ${keep.length} of yours` : ''}`);
 }
 

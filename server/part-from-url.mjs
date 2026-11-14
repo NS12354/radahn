@@ -27,11 +27,14 @@ function privateIp(ip) {
   const v = ip.toLowerCase();
   return v === '::1' || v === '::' || v.startsWith('fc') || v.startsWith('fd') || v.startsWith('fe80') || v.startsWith('::ffff:127.') || v.startsWith('::ffff:10.') || v.startsWith('::ffff:192.168.');
 }
+// FF_ALLOW_LOCAL_FETCH=1 is for the end-to-end tests only (they serve a fixture page on localhost).
+const ALLOW_LOCAL = process.env.FF_ALLOW_LOCAL_FETCH === '1' && process.env.NODE_ENV !== 'production';
 async function checkUrl(raw) {
   let u;
   try { u = new URL(raw); } catch { throw new Error('That is not a valid link.'); }
   if (u.protocol !== 'http:' && u.protocol !== 'https:') throw new Error('Only http(s) links are supported.');
   const host = u.hostname.replace(/^\[|\]$/g, '');
+  if (ALLOW_LOCAL) return u;
   if (host === 'localhost' || host.endsWith('.local') || host.endsWith('.internal')) throw new Error('Links to this computer or the local network are not allowed.');
   const addrs = net.isIP(host) ? [host] : (await dns.lookup(host, { all: true }).catch(() => { throw new Error(`Could not find ${host}.`); })).map(a => a.address);
   if (addrs.some(privateIp)) throw new Error('Links to this computer or the local network are not allowed.');

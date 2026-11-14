@@ -1,0 +1,38 @@
+name: CI
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Arduino toolchain
+        uses: arduino/setup-arduino-cli@v2
+      - run: npm run setup:toolchain
+      - run: npm run typecheck
+      - name: Unit tests (the Arduino compile test is required here)
+        run: npm test
+        env:
+          FF_REQUIRE_TOOLCHAIN: '1'
+      - run: npm run build
+      - name: Browser for end-to-end tests
+        run: npx playwright install --with-deps chromium
+      - name: End-to-end tests
+        run: npm run test:e2e
+      - name: Test report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7

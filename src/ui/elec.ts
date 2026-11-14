@@ -12,6 +12,8 @@ import { nextColor, newUid, starterFiles } from '../app/project';
 import { cardKind, customOf } from '../hw/custom';
 import { initParts, renderLib } from './parts';
 import { codeChanged, wiringEdited, openPanel } from './health';
+import { track } from './track';
+import { gh, GH_MIME, CODE_EXT, type GhDrag } from '../app/github';
 import { explainCheck } from '../app/explain';
 
 /** Card/visual type: built-ins use their own type; imported parts borrow the closest built-in card. */
@@ -160,6 +162,60 @@ function setRunUI(starting = false) {
   for (const f of taps.status) f(on, on ? (starting ? 'starting' : lastStatus) : 'idle');
 }
 
+// ------------------------------------------------------------------ importing files (GitHub, desktop)
+/** Where a file lands in this board's project: MicroPython drivers in lib/, the sketch replaces the .ino, etc. */
+function destFor(name: string): string | null {
+  const e = A.project.electronics, base = name.split('/').pop()!, ext = base.split('.').pop()!.toLowerCase(), lang = board().lang;
+  if (ext === 'hex') return lang === 'arduino' ? 'firmware.hex' : null;
+  if (lang === 'arduino') {
+    if (ext === 'ino') return Object.keys(e.files).find(n => n.endsWith('.ino')) ?? base;
+    return ['h', 'hpp', 'c', 'cpp'].includes(ext) ? base : null;
+  }
+  if (ext !== 'py') return null;
+  if (base === 'main.py' || base === 'code.py') return 'main.py';
+  return lang === 'micropython' ? 'lib/' + base : base;
+}
+/** Add files to the project's code. Asks once before replacing existing files. Returns what happened. */
+export function importFiles(items: { name: string; content: string }[], source: string) {
+  const e = A.project.electronics, plan: [string, string, string][] = [], skipped: string[] = [];
+  for (const it of items) { const d = destFor(it.name); if (d) plan.push([it.name, d, it.content]); else skipped.push(it.name.split('/').pop()!); }
+  const replacing = plan.filter(([, d, c]) => e.files[d] != null && e.files[d] !== c).map(([, d]) => d);
+  if (replacing.length && !window.confirm(`Replace ${replacing.join(', ')} with the version${replacing.length > 1 ? 's' : ''} from ${source}?`)) return { added: [], skipped };
+  for (const [, d, c] of plan) e.files[d] = c;
+  if (plan.length) {
+    e.filesEdited = true; e.activeFile = plan[0][1]; compiled = null;
+    renderTabs(); A.changed('electronics'); codeChanged(); bridge.files();
+    track('code', `Imported ${plan.length} file${plan.length > 1 ? 's' : ''} from ${source}: ${plan.map(p => p[1]).join(', ')}`);
+  }
+  const kinds = board().lang === 'arduino' ? '.ino, .h, .cpp and .hex' : '.py';
+  toast(plan.length ? `Added ${plan.map(p => p[1]).join(', ')}${skipped.length ? ` (skipped ${skipped.length} non-${kinds} file${skipped.length > 1 ? 's' : ''})` : ''}` : `Nothing to add: this board uses ${kinds} files`);
+  return { added: plan.map(p => p[1]), skipped };
+}
+/** Fetch dropped GitHub files (folders expand to their code files) and import them. */
+export async function importFromGitHub(d: GhDrag) {
+  const want = d.paths.slice(0, 60);
+  toast(`Fetching ${want.length} file${want.length > 1 ? 's' : ''} from ${d.repo}…`);
+  const got: { name: string; content: string }[] = [], failed: string[] = [];
+  for (const p of want) { try { const f = await gh.file(d.repo, p, d.ref); got.push({ name: f.path, content: f.content }); } catch (err: any) { failed.push(`${p} (${err.message})`); } }
+  if (failed.length) toast(`Couldn't fetch: ${failed.join('; ')}`);
+  return importFiles(got, `${d.repo}@${d.ref}`);
+}
+function wireDrops() {
+  const zone = $('#right');
+  const ok = (e: DragEvent) => A.mode === 'elec' && !!e.dataTransfer && (e.dataTransfer.types.includes(GH_MIME) || e.dataTransfer.types.includes('Files'));
+  zone.addEventListener('dragover', e => { if (!ok(e)) return; e.preventDefault(); e.stopPropagation(); zone.classList.add('dropping'); });
+  zone.addEventListener('dragleave', e => { if (!zone.contains(e.relatedTarget as Node)) zone.classList.remove('dropping'); });
+  zone.addEventListener('drop', async e => {
+    if (!ok(e)) return;
+    e.preventDefault(); e.stopPropagation(); zone.classList.remove('dropping');
+    const g = e.dataTransfer!.getData(GH_MIME);
+    if (g) { await importFromGitHub(JSON.parse(g)); return; }
+    const files = [...e.dataTransfer!.files].filter(f => CODE_EXT.test(f.name) && f.size < 1e6);
+    if (!files.length) { toast('Drop .py, .ino, .h, .cpp or .hex files'); return; }
+    importFiles(await Promise.all(files.map(async f => ({ name: f.name, content: await f.text() }))), 'your computer');
+  });
+}
+
 // ------------------------------------------------------------------ fixes for the problems panel
 /** Re-wire parts automatically: connect a loose pin, move off a clash / boot pin / USB pin, or onto an ADC, PWM or bus pin pair. */
 export function fixWiring(kind: string, uid?: string, role?: string): string | null {
@@ -190,6 +246,7 @@ export function fixWiring(kind: string, uid?: string, role?: string): string | n
     }
   }
   if (!moved.length) return null;
+  track('wiring', `Fixed the wiring: ${moved.join(', ')}`, true);
   wiringChanged();
   return moved.join(', ');
 }
@@ -221,7 +278,7 @@ export const device = {
   async verify() { compiled = null; return !!(await compile()); },
   send(text: string) { if (!runtime?.running) { serial('Nothing is running. Run the code first.', 'w'); return; } runtime.sendSerial(text); },
   interrupt() { if (runtime?.interrupt) runtime.interrupt(); else runtime?.sendSerial('\x03'); },
-  setFile(name: string, content: string) { const e = A.project.electronics; if (e.files[name] !== content) codeChanged(); e.files[name] = content; e.filesEdited = true; if (!e.activeFile) e.activeFile = name; if (A.mode === 'elec') renderTabs(); A.changed('electronics'); },
+  setFile(name: string, content: string) { const e = A.project.electronics; if (e.files[name] !== content) { codeChanged(); track('code', `Edited ${name}`); } e.files[name] = content; e.filesEdited = true; if (!e.activeFile) e.activeFile = name; if (A.mode === 'elec') renderTabs(); A.changed('electronics'); },
   deleteFile(name: string) { const e = A.project.electronics; if (Object.keys(e.files).length <= 1) return false; delete e.files[name]; if (e.activeFile === name) e.activeFile = Object.keys(e.files)[0]; if (A.mode === 'elec') renderTabs(); A.changed('electronics'); return true; },
   renameFile(from: string, to: string) { const e = A.project.electronics; if (!e.files[from] || e.files[to] != null) return false; e.files[to] = e.files[from]; delete e.files[from]; if (e.activeFile === from) e.activeFile = to; if (A.mode === 'elec') renderTabs(); A.changed('electronics'); return true; },
 };
@@ -320,8 +377,8 @@ function renderBench() {
     const d = el('div', 'card' + (L.roles.length > 2 ? ' wide' : '')); d.style.setProperty('--c', c.color); d.dataset.uid = c.uid;
     d.innerHTML = `<div class="ch"><i class="pdot" title="Press Run to check this part"></i><b>${esc(L.name)}</b><button class="x" title="Remove">✕</button></div>${bound ? `<div class="bind">⇄ ${L.bindLabel}</div>` : `<div class="bind dim">${L.binds ? 'bench only (duplicate)' : 'bench only'}</div>`}<div class="live" title="${esc(L.note ?? '')}">${liveHTML(c)}</div><div class="pins">` +
       L.roles.map(r => `<div class="pr"><span class="chip" data-role="${r.id}">${r.id}</span><select data-role="${r.id}" class="${c.pins[r.id] != null && (m.get(c.pins[r.id] as number) ?? []).length > 1 && !['SDA', 'SCL'].includes(r.id) ? 'bad' : ''}">${pinOpts(c.pins[r.id])}</select></div>`).join('') + '</div>';
-    d.querySelector<HTMLButtonElement>('.x')!.onclick = () => { comps.splice(comps.indexOf(c), 1); wiringChanged(); };
-    d.querySelectorAll<HTMLSelectElement>('select').forEach(sel => (sel.onchange = () => { c.pins[sel.dataset.role!] = sel.value === '' ? null : +sel.value; wiringChanged(); }));
+    d.querySelector<HTMLButtonElement>('.x')!.onclick = () => { comps.splice(comps.indexOf(c), 1); track('part', `Removed the ${L.name}`); wiringChanged(); };
+    d.querySelectorAll<HTMLSelectElement>('select').forEach(sel => (sel.onchange = () => { c.pins[sel.dataset.role!] = sel.value === '' ? null : +sel.value; track('wiring', `Rewired the ${L.name} ${sel.dataset.role} to ${sel.value === '' ? 'nothing' : label(+sel.value)}`); wiringChanged(); }));
     const live = d.querySelector('.live')!;
     if (kind(c) === 'button') { const pb = live.querySelector<HTMLButtonElement>('.pushbtn')!; pb.onpointerdown = e => { e.preventDefault(); audio.unlock(); A.bench.model(c.uid)?.sim?.press(true); pb.classList.add('dn'); }; pb.onpointerup = pb.onpointerleave = () => { if (pb.classList.contains('dn')) { A.bench.model(c.uid)?.sim?.press(false); pb.classList.remove('dn'); } }; }
     if (c.type === 'encoder') live.querySelectorAll<HTMLButtonElement>('.encbtn').forEach(x => (x.onclick = () => { const dd = +x.dataset.d!; if (bound) A.product.rotateDial(dd * Math.PI / 10); if (bound) elecDial(dd); else A.bench.model(c.uid)?.sim?.turn(dd); }));
@@ -399,6 +456,18 @@ function wiringChanged() {
   renderElec(A); A.changed('electronics'); wiringEdited();
 }
 
+/** Apply a wiring change made outside the bench (Claude Code's wiring.json). */
+export function applyWiring(boardId: string, comps: CompInstance[], log: [kind: 'part' | 'wiring' | 'board', text: string][]) {
+  const e = A.project.electronics, prevLang = board().lang;
+  if (runtime?.running) stop();
+  const boardChanged = e.board !== boardId;
+  e.board = boardId; e.comps = comps;
+  if (boardChanged) { compiled = null; if (prevLang !== board().lang) e.filesEdited = false; ($('#board') as HTMLSelectElement).value = boardId; }
+  for (const [k, t] of log) track(k, t);
+  wiringChanged();
+  if (boardChanged && !e.filesEdited) e.activeFile = Object.keys(e.files)[0];
+}
+
 /** Add a part to the bench with sensible free pins (shared I2C bus pins are reused). */
 function addComponent(type: string) {
   const comps = A.project.electronics.comps, def = COMPONENTS[type];
@@ -416,6 +485,7 @@ function addComponent(type: string) {
     pins[r.id] = g ?? null; pool = pool.filter(p => p !== g);
   }
   comps.push({ uid: newUid(), type: def.id, pins, color: nextColor(comps.length) });
+  track('part', `Added a ${def.name}`);
   wiringChanged(); toast(def.name + ' added');
 }
 
@@ -429,7 +499,7 @@ export function initElec(app: App) {
   $('#board').onchange = e => {
     if (runtime?.running) stop();
     const el_ = A.project.electronics, prev = board();
-    el_.board = (e.target as HTMLSelectElement).value;
+    el_.board = (e.target as HTMLSelectElement).value; track('board', `Switched the board to the ${BOARDS[el_.board].name}`);
     const p = KIT_PRESETS[el_.board] ?? {}, seen = new Set<string>();
     for (const c of el_.comps) {
       const pre = p[c.type];
@@ -454,7 +524,7 @@ export function initElec(app: App) {
     renderElec(A);
   }));
   const ta = $('#code') as HTMLTextAreaElement;
-  ta.oninput = () => { const e = A.project.electronics; e.files[e.activeFile] = ta.value; e.filesEdited = true; gutter(); A.changed('electronics'); bridge.files(); codeChanged(); };
+  ta.oninput = () => { const e = A.project.electronics; track('code', `Edited ${e.activeFile}`); e.files[e.activeFile] = ta.value; e.filesEdited = true; gutter(); A.changed('electronics'); bridge.files(); codeChanged(); };
   ta.onscroll = () => { $('#gutter').scrollTop = ta.scrollTop; };
   ta.onkeydown = e => {
     if (e.key === 'Tab') { e.preventDefault(); ta.setRangeText('    ', ta.selectionStart, ta.selectionEnd, 'end'); ta.dispatchEvent(new Event('input')); }
@@ -470,6 +540,7 @@ export function initElec(app: App) {
     if (e.key === 'Enter') { runtime?.sendSerial(si.value + (board().lang === 'arduino' ? '\n' : '\r')); serial('» ' + si.value, 's'); si.value = ''; }
   };
   window.addEventListener('resize', () => { if (A.mode === 'elec') drawWires(); });
+  wireDrops();
 }
 
 export function renderElec(app: App) {
