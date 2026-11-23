@@ -202,3 +202,4 @@ See **docs/EXTENDING.md** to add a board, a component, or a runtime.
 ## License notes
 
 Bundles MicroPython (MIT), rp2040js and avr8js (MIT), Skulpt (MIT/PSF), three.js (MIT), and occt-import-js (LGPL-2.1, loaded as a separate WASM module). The Arduino core and Adafruit_NeoPixel are fetched by `setup:toolchain` (LGPL), not vendored into the build.
+# radahn
