@@ -60,7 +60,7 @@ export const jointKey = (id: string) => `joint:${id}`;
  */
 export function ratingOf(p: BuiltPart, compType: string | undefined, wall = 2): Rating {
   const d = p.detail ?? '', name = p.name;
-  if (p.kind === 'shell') return { what: `Enclosure (${wall} mm walls)`, forceN: Math.round(110 * wall ** 1.5), shockG: 8000, effect: 'cosmetic', fails: 'the housing cracks' };
+  if (p.kind === 'shell') return { what: `Enclosure (${wall} mm walls)`, forceN: Math.round(260 * wall ** 1.5), shockG: 8000, effect: 'cosmetic', fails: 'the housing cracks' };
   if (d.startsWith('servo:')) return { what: `Servo case (${d.slice(6).toUpperCase()})`, forceN: 900, shockG: 400, effect: 'limp', fails: 'the case cracks and the servo stops' };
   if (p.role === 'screen' || (compType && DISPLAYS.has(compType)) || /\b(lcd|oled|tft)\b/i.test(name))
     return { what: 'Display glass', forceN: 200, shockG: 220, effect: 'screen', fails: 'the glass cracks' };
