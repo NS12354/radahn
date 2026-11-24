@@ -10,7 +10,7 @@ export function initViewTools(A: App) {
   const stored = (() => { try { return localStorage.getItem('ff.quality'); } catch { return null; } })();
   if (stored === 'fast' || (!stored && softwareGpu(V.renderer))) V.quality = 'fast';
   const q = $('#vpQuality');
-  const show = () => { q.textContent = V.quality === 'high' ? '✨ High quality' : '⚡ Fast'; q.classList.toggle('on', V.quality === 'high'); };
+  const show = () => { q.textContent = V.quality === 'high' ? 'High quality' : 'Fast'; q.dataset.ico = V.quality === 'high' ? 'spark' : 'bolt'; q.classList.toggle('on', V.quality === 'high'); };
   show();
   q.onclick = () => { V.quality = V.quality === 'high' ? 'fast' : 'high'; try { localStorage.setItem('ff.quality', V.quality); } catch { /* private mode */ } show(); };
 

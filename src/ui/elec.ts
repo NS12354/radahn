@@ -163,8 +163,8 @@ export const firmwareRunning = () => !!runtime?.running && target === 'virtual';
 
 function setRunUI(starting = false) {
   const on = starting || !!runtime?.running;
-  const b = $('#bRun'); b.textContent = on ? '■ Stop' : '▶ Run'; b.classList.toggle('primary', !on);
-  const t = document.getElementById('bRunTop'); if (t) { t.textContent = on ? '■ Stop' : '▶ Run'; t.classList.toggle('on', on); }
+  const b = $('#bRun'); b.textContent = on ? 'Stop' : 'Run'; b.dataset.ico = on ? 'stop' : 'play'; b.classList.toggle('primary', !on);
+  const t = document.getElementById('bRunTop'); if (t) { t.textContent = on ? 'Stop' : 'Run'; t.dataset.ico = on ? 'stop' : 'play'; t.classList.toggle('on', on); }
   $('#runState').innerHTML = on ? '<span style="color:var(--ok)">● running</span>' : '<span style="color:var(--faint)">idle</span>';
   $('#bCompile').style.display = board().lang === 'arduino' && target === 'virtual' ? '' : 'none';
   bridge.status(on, on ? (starting ? 'starting' : lastStatus) : 'idle');
@@ -308,7 +308,7 @@ export function elecPress(down: boolean) {
   const pb = document.querySelector('.card .pushbtn'); pb?.classList.toggle('dn', down);
 }
 let nudgeT = 0;
-function nudge() { if (performance.now() - nudgeT > 2500) { nudgeT = performance.now(); toast('Press ▶ Run to start the firmware'); } }
+function nudge() { if (performance.now() - nudgeT > 2500) { nudgeT = performance.now(); toast('Press Run to start the firmware'); } }
 const HW = { encCount: 0 };
 
 // ------------------------------------------------------------------ editor + tabs
@@ -374,7 +374,7 @@ function liveHTML(c: CompInstance) {
 }
 function pinOpts(sel: number | null) {
   const b = board();
-  return '<option value="">—</option>' + b.gpio.map(g => `<option value="${g}" ${g === sel ? 'selected' : ''}>${label(g)}${b.adc.includes(g) ? ' ADC' : ''}${b.strap.includes(g) ? ' ⚠' : ''}</option>`).join('');
+  return '<option value="">—</option>' + b.gpio.map(g => `<option value="${g}" ${g === sel ? 'selected' : ''}>${label(g)}${b.adc.includes(g) ? ' ADC' : ''}${b.strap.includes(g) ? ' (strap pin)' : ''}</option>`).join('');
 }
 function renderBench() {
   const box = $('#benchIn'), wires = $('#wires');
@@ -479,7 +479,7 @@ export function elecFrame(dt: number) {
     if (kind(c) === 'servo') d.querySelector('.arm')!.setAttribute('transform', `rotate(${(st.angle ?? 90) - 90} 35 26)`);
     if (kind(c) === 'relay') { const x = d.querySelector('.rlv') as HTMLElement; x.textContent = st.on ? 'ON' : 'OFF'; x.style.color = st.on ? 'var(--heat)' : ''; }
     if (kind(c) === 'generic') { const x = d.querySelector('.genv') as HTMLElement; x.textContent = st.rx || st.tx ? `${st.rx} in · ${st.tx} out${st.last ? ' · ' + st.last : ''}` : st.edges ? `${st.edges} edges` : 'idle'; }
-    if (kind(c) === 'haptic') { const x = d.querySelector('.hpv') as HTMLElement; x.textContent = st.on ? 'buzzing' : 'idle'; x.style.color = st.on ? '#a8db5f' : ''; }
+    if (kind(c) === 'haptic') { const x = d.querySelector('.hpv') as HTMLElement; x.textContent = st.on ? 'buzzing' : 'idle'; x.style.color = st.on ? 'var(--accent-text)' : ''; }
   }
 }
 

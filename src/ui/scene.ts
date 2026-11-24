@@ -276,7 +276,7 @@ function renderLog() {
   const name = new Map(views.map(v => [v.robot.def.id, v]));
   const rows = log.filter(l => filter === 'all' || l.robot === filter).slice(-600);
   const pre = $('#swLog'), stick = pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 30;
-  pre.innerHTML = rows.length ? rows.map(l => { const v = name.get(l.robot); return `<div class="${l.cls ?? ''}">${filter === 'all' && v ? `<b style="color:${v.color}">${esc(v.robot.def.name)}</b> ` : ''}${esc(l.text)}</div>`; }).join('') : '<div class="dim">Serial output from every robot shows here. Press ▶ Run all.</div>';
+  pre.innerHTML = rows.length ? rows.map(l => { const v = name.get(l.robot); return `<div class="${l.cls ?? ''}">${filter === 'all' && v ? `<b style="color:${v.color}">${esc(v.robot.def.name)}</b> ` : ''}${esc(l.text)}</div>`; }).join('') : '<div class="dim">Serial output from every robot shows here. Press Run all.</div>';
   if (stick) pre.scrollTop = pre.scrollHeight;
 }
 
@@ -326,7 +326,7 @@ function card(v: View) {
   const r = v.robot, d = r.def, on = selected === d.id, running = !!r.runtime;
   return `<div class="swr ${on ? 'on' : ''}" data-id="${d.id}" style="--c:${v.color}">
     <div class="swrh"><i class="dot ${r.status}"></i><b>${esc(d.name)}</b><span class="swst" data-live="st"></span>
-      <button class="btn ${running ? '' : 'primary'} swgo" data-x="${running ? 'stop' : 'run'}" title="${running ? 'Stop' : 'Run'} ${esc(d.name)}'s firmware">${running ? '■' : '▶'}</button></div>
+      <button class="btn ${running ? '' : 'primary'} swgo" data-x="${running ? 'stop' : 'run'}" title="${running ? 'Stop' : 'Run'} ${esc(d.name)}'s firmware" data-ico="${running ? 'stop' : 'play'}">${running ? 'Stop' : 'Run'}</button></div>
     <div class="swrs">${esc(r.project.name)} · ${esc(r.board.name)}</div>
     ${on ? `<div class="swrf">
       <label>Name <input type="text" data-f="name" value="${esc(d.name)}" spellcheck="false"></label>

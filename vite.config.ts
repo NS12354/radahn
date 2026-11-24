@@ -93,5 +93,7 @@ export default defineConfig(({ mode }) => {
     rollupOptions: { input: { studio: fileURLToPath(new URL('./index.html', import.meta.url)), modeler: fileURLToPath(new URL('./modeler.html', import.meta.url)), device: fileURLToPath(new URL('./device.html', import.meta.url)) } },
   },
   server: { port: 5173 },
+  // pre-bundle deps that are only imported on demand, so the dev server doesn't reload the page when they're first used
+  optimizeDeps: { include: ['@dimforge/rapier3d-compat'] },
 };
 });

@@ -102,7 +102,7 @@ export class Viewport {
     // backdrop: a soft studio gradient (post-processing makes the canvas opaque, so the scene paints its own)
     const bg = document.createElement('canvas'); bg.width = 4; bg.height = 256;
     const bgc = bg.getContext('2d')!, bgg = bgc.createLinearGradient(0, 0, 0, 256);
-    bgg.addColorStop(0, '#262a31'); bgg.addColorStop(0.6, '#17191d'); bgg.addColorStop(1, '#0f1013');
+    bgg.addColorStop(0, '#f4f6f9'); bgg.addColorStop(0.6, '#e6e9ee'); bgg.addColorStop(1, '#d9dde3');
     bgc.fillStyle = bgg; bgc.fillRect(0, 0, 4, 256);
     const bgt = new THREE.CanvasTexture(bg); bgt.colorSpace = THREE.SRGBColorSpace;
     this.scene.background = bgt;
@@ -121,7 +121,7 @@ export class Viewport {
     this.scene.add(key, key.target);
     const rim = new THREE.DirectionalLight(0xc8d6ff, 0.7); rim.position.set(-8, 4, -7); this.scene.add(rim);
     // floor: a shadow catcher (only shadows show) + a soft contact shadow right under the model
-    const ground = (this.ground = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.ShadowMaterial({ color: 0x000000, opacity: 0.28 })));
+    const ground = (this.ground = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.ShadowMaterial({ color: 0x1a2030, opacity: 0.2 })));
     ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; ground.name = '__ground'; ground.userData.noShadowCast = true;
     this.scene.add(ground);
     const g = document.createElement('canvas'); g.width = g.height = 128;

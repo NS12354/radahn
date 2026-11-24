@@ -16,7 +16,7 @@ import { friendly } from '../app/explain';
 let A: App;
 const AREA: Record<PlanArea, string> = { electronics: 'Electronics', code: 'Code', model: '3D model', interactions: 'Interactions', review: 'Review', other: 'Other' };
 const COLS: [TaskStatus, string][] = [['todo', 'To do'], ['doing', 'In progress'], ['done', 'Done']];
-const ICON: Record<LogKind, string> = { run: '▶', crash: '✕', test: '✓', compile: '⚙', wiring: '⌁', part: '+', board: '▣', code: '✎', model: '◆', interaction: '↻', review: '✉', milestone: '★', ai: '✦', task: '☐' };
+const ICON: Record<LogKind, string> = { run: '›', crash: '✕', test: '✓', compile: '◇', wiring: '⌁', part: '+', board: '▣', code: '✎', model: '◆', interaction: '↻', review: '¶', milestone: '★', ai: '✦', task: '☐' };
 let undo: string | null = null, busy = false;
 
 const plan = (): PlanData => (A.project.plan ??= emptyPlan());
@@ -143,9 +143,9 @@ export function render() {
   // AI
   const ai = p.ai, box = $('#plAi');
   ($('#plAiBtn') as HTMLButtonElement).disabled = busy;
-  $('#plAiBtn').innerHTML = busy ? '<i class="spin"></i> Reading your project…' : '✦ Update with AI';
+  $('#plAiBtn').innerHTML = busy ? '<i class="spin"></i> Reading your project…' : 'Update with AI';
   ($('#plUndo') as HTMLElement).hidden = !undo;
-  box.innerHTML = ai ? `<div class="plsum">${esc(ai.summary)}</div>${ai.nextStep ? `<div class="plnext"><b>Next:</b> ${esc(ai.nextStep)}</div>` : ''}${ai.risks.length ? `<div class="plrisk">${ai.risks.map(r => `<div>⚠ ${esc(r)}</div>`).join('')}</div>` : ''}<div class="plwhen">Updated ${ago(ai.at)}</div>` : '<div class="plsum dim">The AI reads your parts, code, test results and this log, then ticks off what\'s done (with evidence), records finished work you didn\'t list, and suggests what to do next.</div>';
+  box.innerHTML = ai ? `<div class="plsum">${esc(ai.summary)}</div>${ai.nextStep ? `<div class="plnext"><b>Next:</b> ${esc(ai.nextStep)}</div>` : ''}${ai.risks.length ? `<div class="plrisk">${ai.risks.map(r => `<div>Risk: ${esc(r)}</div>`).join('')}</div>` : ''}<div class="plwhen">Updated ${ago(ai.at)}</div>` : '<div class="plsum dim">The AI reads your parts, code, test results and this log, then ticks off what\'s done (with evidence), records finished work you didn\'t list, and suggests what to do next.</div>';
   const sg = $('#plSug'); sg.innerHTML = '';
   for (const s of ai?.suggestions ?? []) {
     const d = el('div', 'plsg', `<div><b>${esc(s.title)}</b><span>${esc(s.why)}</span></div><button class="btn primary">Add</button><button class="btn x" title="Dismiss">✕</button>`);

@@ -80,14 +80,14 @@ function render() {
   const becs = comps.filter(c => c.type === 'bec');
   const driver = (d?: { comp: string; channel?: number }) => { if (!d) return 'teach slider'; const c = comps.find(x => x.uid === d.comp); if (!c) return 'missing part'; const n = COMPONENTS[c.type]?.name.split(' (')[0] ?? c.type; return c.type === 'pca9685' ? `${n} ch ${d.channel ?? 0}` : c.type === 'tb6612' || c.type === 'l298n' ? `${n} ${d.channel ? 'B' : 'A'}` : n; };
   panel.innerHTML = `
-    <div class="rph"><b>🤖 Robot</b><span class="rpst" id="rpState"></span><button class="rpx" id="rpToggle" title="${open ? 'Collapse' : 'Expand'}">${open ? '–' : '+'}</button></div>
+    <div class="rph"><b>Robot</b><span class="rpst" id="rpState"></span><button class="rpx" id="rpToggle" title="${open ? 'Collapse' : 'Expand'}">${open ? '–' : '+'}</button></div>
     ${open ? `
     <div class="rpb">
       <div class="rpj">${sim.joints.map(j => {
         const lo = j.joint.type === 'wheel' ? -360 : j.joint.min ?? -180, hi = j.joint.type === 'wheel' ? 360 : j.joint.max ?? 180;
         return `<div class="rpr" data-id="${j.id}" title="Driven by ${esc(driver(j.joint.drive))}"><span class="rpn">${esc(j.name)}</span><input type="range" min="${lo}" max="${hi}" step="${j.joint.type === 'prismatic' ? 0.5 : 1}" value="${Math.round(j.q)}"><span class="rpv"></span></div>`;
       }).join('') || '<div class="empty">No moving joints yet. Select a part in Design and give it a joint.</div>'}</div>
-      <div class="rpbtns"><button class="btn" id="rpRec" title="Record the current joint angles">● Record pose</button><button class="btn" id="rpIns" title="Put the recorded poses into the code">Use in code</button><button class="btn" id="rpPlay">▶ Play</button><button class="btn" id="rpClr">Clear</button></div>
+      <div class="rpbtns"><button class="btn" id="rpRec" title="Record the current joint angles">● Record pose</button><button class="btn" id="rpIns" title="Put the recorded poses into the code">Use in code</button><button class="btn" id="rpPlay" data-ico="play">Play</button><button class="btn" id="rpClr">Clear</button></div>
       <div class="rpposes">${(sp.poses ?? []).map((p, i) => `<span class="rppose" data-i="${i}" title="Click to go to it">${esc(p.name)}</span>`).join('') || '<span class="dim">No poses yet (teach mode: move the sliders, then Record)</span>'}</div>
       <div class="rprow"><label>World</label><select id="rpWorld">${Object.entries(WORLDS).map(([k, w]) => `<option value="${k}" ${k === worldKind(sp.world) ? 'selected' : ''}>${w.label}</option>`).join('')}</select>
         <label title="Rigid-body physics (Rapier): gravity, mass, friction, collisions and servo torque limits">Physics</label><select id="rpPhys"><option value="1" ${sp.physics ? 'selected' : ''}>Realistic</option><option value="" ${sp.physics ? '' : 'selected'}>Simple</option></select>
@@ -95,7 +95,7 @@ function render() {
       ${sp.world ? `<div class="rprow rpobjs"><label>Objects</label>${sp.world.obstacles.map((o, i) => `<span class="rpobj" title="${o.pick ? 'The gripper can pick this up' : 'Fixed in place'}"><i style="background:${esc(o.color ?? '#c8743a')}"></i>${esc(objName(o))}<button class="rpdel" data-i="${i}" title="Remove ${esc(objName(o).toLowerCase())}" aria-label="Remove ${esc(objName(o).toLowerCase())}">×</button></span>`).join('') || '<span class="dim">None</span>'}<button class="btn" id="rpAddBlock" title="Add a 20 mm block the gripper can pick up">+ Block</button></div>` : ''}
       <div class="rprow adv"><label>Mass</label><input type="number" id="rpMass" value="${sp.mass}" min="10" step="50"> g
         ${becs.length ? `<label>Servo supply</label><input type="number" id="rpAmps" value="${becs[0].props?.amps ?? 5}" min="1" step="1"> A` : ''}</div>
-      <div class="rpbtns"><button class="btn" id="rpReset">↺ Reset position</button><button class="btn adv" id="rpUrdf" title="Save a URDF for ROS, RViz and Gazebo">Export URDF</button><button class="btn adv" id="rpImp" title="Load a robot from a URDF file">Import URDF…</button></div>
+      <div class="rpbtns"><button class="btn" id="rpReset" data-ico="reset">Reset position</button><button class="btn adv" id="rpUrdf" title="Save a URDF for ROS, RViz and Gazebo">Export URDF</button><button class="btn adv" id="rpImp" title="Load a robot from a URDF file">Import URDF…</button></div>
       <div class="rprow ros adv"><label>ROS 2</label><input type="text" id="rpRos" value="ws://localhost:9090" spellcheck="false"><button class="btn" id="rpRosGo">${bridge.status === 'connected' || bridge.status === 'connecting' ? 'Disconnect' : 'Connect'}</button></div>
       <div class="rpnote adv" id="rpNote">${bridge.status === 'error' ? esc(bridge.error) : bridge.status === 'connected' ? 'Publishing /joint_states and /formframe/pose; listening to /cmd_vel and /formframe/joint_commands.' : 'Needs rosbridge_server on the ROS side.'}</div>
     </div>` : ''}`;
@@ -150,7 +150,7 @@ function live() {
     const inp = r.querySelector('input')!, v = r.querySelector('.rpv')!;
     if (document.activeElement !== inp && (run || j.driven)) inp.value = String(j.joint.type === 'wheel' ? ((j.q % 360) + 540) % 360 - 180 : j.q);
     const unit = j.joint.type === 'prismatic' ? ' mm' : '°';
-    v.textContent = `${j.joint.type === 'wheel' ? Math.round(((j.q % 360) + 360) % 360) : j.q.toFixed(j.joint.type === 'prismatic' ? 1 : 0)}${unit}${j.sag ? ` ⚠ sag ${Math.abs(j.sag).toFixed(0)}°` : ''}`;
+    v.textContent = `${j.joint.type === 'wheel' ? Math.round(((j.q % 360) + 360) % 360) : j.q.toFixed(j.joint.type === 'prismatic' ? 1 : 0)}${unit}${j.sag ? ` · sags ${Math.abs(j.sag).toFixed(0)}°` : ''}`;
     (v as HTMLElement).title = j.load ? `Load ${j.load.toFixed(1)} kg·cm of ${j.torque} kg·cm stall${j.sag ? ': the servo can\'t hold it' : ''}` : '';
     r.classList.toggle('drv', j.driven);
   }

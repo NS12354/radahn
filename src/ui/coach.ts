@@ -19,19 +19,19 @@ const seen: Seen = { ran: false, ranFor: 0, orbited: false, jogged: false, edite
 let minimized = false, hidden = false, lastKey = '';
 
 const ROBOT_STEPS: Step[] = [
-  { id: 'run', text: 'Press <b>▶ Run</b> at the top to start your robot’s code.', why: 'The code runs on a virtual board, and the 3D robot moves exactly as the real one would.', target: '#bRunTop', done: s => s.ran },
+  { id: 'run', text: 'Press <b>Run</b> at the top to start your robot’s code.', why: 'The code runs on a virtual board, and the 3D robot moves exactly as the real one would.', target: '#bRunTop', done: s => s.ran },
   { id: 'watch', text: 'Watch it move. <b>Drag</b> to look around, <b>scroll</b> to zoom.', why: 'Joints, wheels and sensors are simulated with real physics.', target: '#viewport', done: s => s.orbited || s.ranFor > 12 },
-  { id: 'teach', text: 'Press <b>■ Stop</b>, then drag a joint slider in the <b>Robot</b> panel.', why: 'That’s teach mode: pose the robot by hand, then Record pose to save it.', target: '#robotPanel', done: s => s.jogged },
+  { id: 'teach', text: 'Press <b>Stop</b>, then drag a joint slider in the <b>Robot</b> panel.', why: 'That’s teach mode: pose the robot by hand, then Record pose to save it.', target: '#robotPanel', done: s => s.jogged },
   { id: 'code', text: 'Open <b>Electronics</b> and change a number in <b>main.py</b>, then Run again.', why: 'Try a bigger stride or a faster speed and see what happens.', mode: 'elec', target: '#code', done: s => s.edited },
-  { id: 'photo', text: 'Take a picture: press <b>📷 Photo</b> in the corner of the view.', why: 'It renders a photo-realistic image you can save and share.', target: '#vpPhoto', done: s => s.photo },
+  { id: 'photo', text: 'Take a picture: press <b>Photo</b> in the corner of the view.', why: 'It renders a photo-realistic image you can save and share.', target: '#vpPhoto', done: s => s.photo },
 ];
 const PRODUCT_STEPS: Step[] = [
   { id: 'parts', text: 'Open <b>Electronics</b> and click a part in <b>Add component</b> (try a button and an LED).', why: 'Parts get wired to free pins automatically, and example code appears.', mode: 'elec', target: '#libList', done: s => s.parts > 0 },
-  { id: 'run', text: 'Press <b>▶ Run</b> at the top, then click the parts on the bench.', why: 'Your code runs on a virtual board and the parts react like real ones.', target: '#bRunTop', done: s => s.ran },
+  { id: 'run', text: 'Press <b>Run</b> at the top, then click the parts on the bench.', why: 'Your code runs on a virtual board and the parts react like real ones.', target: '#bRunTop', done: s => s.ran },
   { id: 'build', text: 'Make it a product: in <b>Design</b>, press <b>Auto build</b>.', why: 'Formframe designs an enclosure around your board and parts.', mode: 'design', target: '#secAuto', done: s => s.built },
   { id: 'select', text: 'Click a part of the model to change its size or colour.', why: 'Everything is editable; drag the arrows to move it.', mode: 'design', target: '#viewport', done: s => s.selected },
   { id: 'check', text: 'Click the <b>health badge</b> at the top to see what to fix next.', why: 'It checks wiring, power and fit, and explains each problem.', target: '#bHealth', done: s => s.checked },
-  { id: 'photo', text: 'Take a picture: press <b>📷 Photo</b>.', why: 'A photo-realistic render of your product.', target: '#vpPhoto', done: s => s.photo },
+  { id: 'photo', text: 'Take a picture: press <b>Photo</b>.', why: 'A photo-realistic render of your product.', target: '#vpPhoto', done: s => s.photo },
 ];
 
 export function initCoach(app: App) {
@@ -73,7 +73,7 @@ function tick() {
   card.classList.toggle('min', minimized);
   const dots = steps.map((_, k) => `<i class="${k < i || i < 0 ? 'done' : k === i ? 'cur' : ''}"></i>`).join('');
   if (i < 0) {
-    card.innerHTML = `<div class="ch"><b>🎉 You’ve got the basics</b><button class="x" id="coachX" title="Hide the coach">✕</button></div><div class="cbody"><div class="dots">${dots}</div><div class="why">Try another robot from the home screen, or switch on <b>Advanced</b> at the top for every setting.</div></div>`;
+    card.innerHTML = `<div class="ch"><b>You’ve got the basics</b><button class="x" id="coachX" title="Hide the coach">✕</button></div><div class="cbody"><div class="dots">${dots}</div><div class="why">Try another robot from the home screen, or switch on <b>Advanced</b> at the top for every setting.</div></div>`;
   } else {
     const s = steps[i];
     card.innerHTML = `<div class="ch"><b>Next step ${i + 1} of ${steps.length}</b><button class="x" id="coachMin" title="${minimized ? 'Expand' : 'Collapse'}">${minimized ? '▴' : '▾'}</button><button class="x" id="coachX" title="Hide the coach">✕</button></div>

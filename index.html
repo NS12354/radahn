@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Formframe — Hardware Prototyping Studio</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600&family=Roboto:wght@400;500;700&family=Roboto+Flex:opsz,wght@8..144,400..700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 </head>
 <body class="m-design">
 <header id="top">
@@ -40,7 +40,7 @@
   </div>
   <input class="fname" id="pname" spellcheck="false" aria-label="Project name">
   <button class="health none" id="bHealth"><i></i><span>Not tested yet</span></button>
-  <button class="btn runtop" id="bRunTop" title="Run your code on the virtual board (works from any tab)">▶ Run</button>
+  <button class="btn runtop" id="bRunTop" title="Run your code on the virtual board (works from any tab)" data-ico="play">Run</button>
   <div class="seg" id="modes">
     <button data-m="design" class="on" title="Design: shape the 3D model and its parts">Design</button>
     <button data-m="proto" title="Prototype: click and drag the model to try how it behaves, before any code">Prototype</button>
@@ -99,7 +99,7 @@
       <div id="pins"></div>
       <div id="hint"></div>
       <div id="statebadge"></div>
-      <div id="vpTools"><button class="vpt" id="vpQuality" title="Shadows, ambient occlusion and glow. Fast mode is used automatically while firmware runs.">✨ High quality</button><button class="vpt" id="vpPhoto" title="Render a photo-realistic image of this view (path tracing)">📷 Photo</button></div>
+      <div id="vpTools"><button class="vpt" id="vpQuality" title="Shadows, ambient occlusion and glow. Fast mode is used automatically while firmware runs." data-ico="spark">High quality</button><button class="vpt" id="vpPhoto" title="Render a photo-realistic image of this view (path tracing)" data-ico="camera">Photo</button></div>
       <div id="photoBar" style="display:none"><span id="photoMsg">Rendering…</span><div class="pbar"><i id="photoProg"></i></div><button class="btn primary" id="photoSave">Save image</button><button class="btn" id="photoClose">Close</button></div>
       <div id="vpEmpty">
         <b>No model yet</b>
@@ -174,7 +174,7 @@
         <button class="btn" id="bIde" title="Open the coding environment for this board in its own window">IDE ↗</button>
         <button class="btn" id="bTpl" title="Regenerate starter code from the current wiring">Reset code</button>
         <button class="btn" id="bCompile">Compile</button>
-        <button class="btn primary" id="bRun">▶ Run</button>
+        <button class="btn primary" id="bRun" data-ico="play">Run</button>
       </div>
       <div class="serhead"><button class="ptab on" id="tabSerial">Serial monitor</button><button class="ptab" id="tabClaude" title="Ask Claude Code to write or fix this code">✻ Claude Code</button><span id="runState"></span><button class="btn" id="bClr">Clear</button></div>
       <div id="serial"></div>
@@ -184,7 +184,7 @@
         <div id="clAsk" role="alertdialog" aria-label="Approve Claude's hardware change"></div>
         <div id="clNotice" class="clnotice"></div>
         <div id="claudeTerm"></div>
-        <div class="clnote">Claude edits the code tabs and the wiring. Pin moves apply right away; new hardware waits for your Approve. Press ▶ Run to try changes.</div>
+        <div class="clnote">Claude edits the code tabs and the wiring. Pin moves apply right away; new hardware waits for your Approve. Press Run to try changes.</div>
       </div>
     </div>
 
@@ -196,7 +196,7 @@
 
 <div id="home">
   <div class="hwrap">
-    <div class="hhead"><div class="logo"><i></i>Formframe</div><button class="btn" id="hTour">▶ Take the tour</button></div>
+    <div class="hhead"><div class="logo"><i></i>Formframe</div><button class="btn" id="hTour" data-ico="play">Take the tour</button></div>
     <h2>Start something</h2>
     <div class="starts">
       <div class="start" id="hBlank" role="button" tabindex="0"><div class="ic ic-blank"></div><b>Blank project</b><span>No model, no parts, no code. Board: <select id="homeBoard"></select></span></div>
@@ -222,9 +222,9 @@
     <label class="swworld">World <select id="swWorld"></select></label>
     <label class="swworld" title="Realistic: one rigid-body world for the whole scene (gravity, friction, servo torque, robots collide)">Physics <select id="swPhys"><option value="">Simple</option><option value="1">Realistic</option></select></label>
     <div class="swrun">
-      <button class="btn primary" id="swRunAll" title="Start every robot's firmware">▶ Run all</button>
-      <button class="btn" id="swStopAll">■ Stop all</button>
-      <button class="btn" id="swReset" title="Robots back to their spots, blocks back where they started">↺ Reset</button>
+      <button class="btn primary" id="swRunAll" title="Start every robot's firmware" data-ico="play">Run all</button>
+      <button class="btn" id="swStopAll" data-ico="stop">Stop all</button>
+      <button class="btn" id="swReset" title="Robots back to their spots, blocks back where they started" data-ico="reset">Reset</button>
     </div>
   </header>
   <div class="swbody">
@@ -272,7 +272,7 @@
   </div>
   <div class="plcol plright">
     <div class="plh"><h2>AI tracker</h2><button class="btn" id="plUndo" hidden>Undo</button></div>
-    <button class="btn primary plai" id="plAiBtn">✦ Update with AI</button>
+    <button class="btn primary plai" id="plAiBtn" data-ico="spark">Update with AI</button>
     <div id="plAi"></div>
     <div id="plSug"></div>
     <div class="plh" style="margin-top:14px"><h2>Activity</h2></div>
@@ -283,7 +283,7 @@
 <aside id="problems" aria-label="Is it working?">
   <div class="phd"><b>Is it working?</b><button class="btn" id="pClose" title="Close">✕</button></div>
   <div id="psum"></div>
-  <div class="ptest"><button class="btn primary" id="bTest">▶ Test it</button><span>Runs your code, presses and turns every input for you, and checks each part responds.</span></div>
+  <div class="ptest"><button class="btn primary" id="bTest" data-ico="play">Test it</button><span>Runs your code, presses and turns every input for you, and checks each part responds.</span></div>
   <div id="ptest"></div>
   <div id="plist"></div>
 </aside>

@@ -9,18 +9,18 @@ test('beginners: the coach says what to do next, and Run works from any tab', as
   // simple mode by default: expert tabs and tools are hidden
   await expect(page.locator('body')).toHaveClass(/simple/);
   await expect(page.locator('#modes [data-m=github]')).toBeHidden();
-  await expect(page.locator('#coach')).toContainText('Press ▶ Run');
+  await expect(page.locator('#coach')).toContainText('Press Run');
   // Show me highlights the Run button
   await page.click('#coachShow');
   await expect(page.locator('#bRunTop')).toHaveClass(/coach-pulse/);
   // Run from the Design tab: the code runs and the robot drives, without leaving Design
   await page.click('#bRunTop');
-  await expect(page.locator('#bRunTop')).toHaveText('■ Stop');
+  await expect(page.locator('#bRunTop')).toHaveText('Stop');
   await expect(page.locator('#modes [data-m=design]')).toHaveClass(/on/);
   await expect.poll(() => page.evaluate(() => (globalThis as any).__robot?.().body.z ?? 0), { timeout: 60_000 }).toBeGreaterThan(100);
   await expect(page.locator('#coach')).toContainText('Watch it move', { timeout: 10_000 });
   await page.click('#bRunTop');
-  await expect(page.locator('#bRunTop')).toHaveText('▶ Run');
+  await expect(page.locator('#bRunTop')).toHaveText('Run');
   // Advanced shows everything
   await page.check('#bAdvanced');
   await expect(page.locator('#modes [data-m=github]')).toBeVisible();

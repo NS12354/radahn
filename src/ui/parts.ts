@@ -64,7 +64,7 @@ function renderReview() {
     <div class="ph"><b>${esc(s.name)}</b>${conf}</div>
     <div class="note" style="margin:0 0 6px">${esc(src)}${s.url ? ` · <a class="lnk" href="${esc(s.url)}" target="_blank" rel="noopener">page</a>` : ''}${s.datasheet ? ` · <a class="lnk" href="${esc(s.datasheet)}" target="_blank" rel="noopener">datasheet</a>` : ''}</div>
     ${draftNotes.map(n => `<div class="note" style="color:var(--warn);margin:0 0 4px">${esc(n)}</div>`).join('')}
-    ${s.summary ? `<div style="color:#cfcfd4;line-height:1.45;margin-bottom:4px">${esc(s.summary)}</div>` : ''}
+    ${s.summary ? `<div style="color:var(--text2);line-height:1.45;margin-bottom:4px">${esc(s.summary)}</div>` : ''}
     <div class="row"><label>Name</label><input type="text" data-f="name" value="${esc(s.name)}"></div>
     <div class="row"><label>Type</label><select data-f="category">${opts(CATS, s.category)}</select></div>
     <div class="row"><label>Interface</label><select data-f="interface">${opts(IFACES, s.interface)}</select></div>
