@@ -69,6 +69,8 @@ export interface BuiltPart {
   joint?: Joint;
   /** A detailed model of real hardware instead of the plain shape, e.g. "servo:mg996r", "pcb:picow" (see scene/detail.ts). */
   detail?: string;
+  /** Robots: mounted from a loose part with Attach (removed again if its component is removed). */
+  attached?: true;
   /** Robots: a foot (legged robots stand and walk on these). Its contact point is the bottom of the part. */
   foot?: boolean;
 }
@@ -104,7 +106,7 @@ export interface World {
   track?: { points: [number, number][]; width: number };
 }
 export type ObstacleMaterial = 'fixed' | 'foam' | 'cardboard' | 'plastic' | 'wood' | 'metal';
-export interface Obstacle { shape: 'box' | 'cyl'; pos: [number, number]; size: [number, number, number]; color?: string; rot?: number; pick?: boolean; name?: string; material?: ObstacleMaterial; mass?: number }
+export interface Obstacle { shape: 'box' | 'cyl'; pos: [number, number]; size: [number, number, number]; color?: string; rot?: number; pick?: boolean; name?: string; material?: ObstacleMaterial; mass?: number; /** A loose electronic part (component uid), see loose.ts. */ comp?: string }
 /**
  * Effective density (kg/m³, for the object as a whole: a cardboard box is mostly air) and
  * friction against rubber/plastic. Fixed objects never move.
@@ -145,6 +147,8 @@ export interface RobotSpec {
   physics?: boolean;
   /** Poses recorded in teach mode: joint part id → value. */
   poses?: { name: string; joints: Record<string, number> }[];
+  /** Components already given a place (loose in the world or attached), see loose.ts. */
+  placed?: string[];
 }
 
 export interface AutoBuildOpts {
