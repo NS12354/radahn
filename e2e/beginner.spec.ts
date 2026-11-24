@@ -3,7 +3,7 @@ import { home, errors } from './helpers';
 
 test('beginners: the coach says what to do next, and Run works from any tab', async ({ page }) => {
   const errs = errors(page);
-  await home(page);
+  await home(page, { simple: true });
   await page.click('#hRobots button[data-k="rover-line"]');
   await page.waitForFunction(() => !!(window as any).formframe?.projectId);
   // simple mode by default: expert tabs and tools are hidden
@@ -32,8 +32,11 @@ test('photo mode and quality controls are in the 3D view', async ({ page }) => {
   await page.click('#hRobots button[data-k="arm"]');
   await page.waitForFunction(() => !!(window as any).formframe?.projectId);
   await expect(page.locator('#vpPhoto')).toBeVisible();
+  // starts Fast on a software GPU (like this headless browser), High on a real one
+  const first = (await page.locator('#vpQuality').textContent())!.includes('Fast') ? 'Fast' : 'High quality';
+  const other = first === 'Fast' ? 'High quality' : 'Fast';
   await page.click('#vpQuality');
-  await expect(page.locator('#vpQuality')).toContainText('Fast');
+  await expect(page.locator('#vpQuality')).toContainText(other);
   await page.click('#vpQuality');
-  await expect(page.locator('#vpQuality')).toContainText('High quality');
+  await expect(page.locator('#vpQuality')).toContainText(first);
 });

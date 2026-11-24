@@ -1,8 +1,10 @@
 import { expect, type Page, type BrowserContext } from '@playwright/test';
 
 /** Fresh studio: open the home screen (each test gets its own empty browser storage). */
-export async function home(page: Page) {
+export async function home(page: Page, opts: { simple?: boolean } = {}) {
   page.on('dialog', d => d.accept());
+  // most specs drive expert tools; the beginner spec asks for the default Simple view
+  if (!opts.simple) await page.addInitScript(() => { try { localStorage.setItem('ff.advanced', '1'); } catch { /* */ } });
   await page.goto('/');
   await expect(page.locator('#home')).toBeVisible();
 }

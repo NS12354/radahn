@@ -26,6 +26,7 @@ export class Viewport {
   camera = new THREE.PerspectiveCamera(32, 1, 0.1, 400);
   controls: OrbitControls;
   quality: Quality = 'high';
+  private shadowFrame = 0;
   /** Set by the electronics panel while an emulator runs. */
   throttle = false;
   /** Pause normal rendering (photo mode draws into the canvas itself). */
@@ -89,6 +90,10 @@ export class Viewport {
   }
 
   render() {
+    // Fast: shadows are refreshed a few times a second, not every frame (the shadow pass is the big cost on weak GPUs)
+    const sm = this.renderer.shadowMap, now = performance.now();
+    if (this.quality === 'high') sm.autoUpdate = true;
+    else { sm.autoUpdate = false; if (now - this.shadowFrame > 250) { this.shadowFrame = now; sm.needsUpdate = true; } }
     if (this.quality === 'high' && !this.throttle) this.composer.render();
     else { this.renderer.toneMapping = THREE.ACESFilmicToneMapping; this.renderer.render(this.scene, this.camera); }
   }

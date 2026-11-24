@@ -8,7 +8,7 @@ let session: PhotoSession | null = null;
 export function initViewTools(A: App) {
   const V = A.viewport;
   const stored = (() => { try { return localStorage.getItem('ff.quality'); } catch { return null; } })();
-  if (stored === 'fast') V.quality = 'fast';
+  if (stored === 'fast' || (!stored && softwareGpu(V.renderer))) V.quality = 'fast';
   const q = $('#vpQuality');
   const show = () => { q.textContent = V.quality === 'high' ? '✨ High quality' : '⚡ Fast'; q.classList.toggle('on', V.quality === 'high'); };
   show();
@@ -32,4 +32,14 @@ export function initViewTools(A: App) {
   $('#photoClose').onclick = close;
   // leaving the view (mode switch, orbit) ends the photo
   V.renderer.domElement.addEventListener('pointerdown', () => { if (session) close(); });
+}
+
+/** No real GPU (SwiftShader, llvmpipe …): start in Fast so the studio stays responsive. */
+function softwareGpu(r: { getContext(): WebGLRenderingContext | WebGL2RenderingContext }) {
+  try {
+    const gl = r.getContext();
+    const ext = gl.getExtension('WEBGL_debug_renderer_info');
+    const name = String(gl.getParameter(ext ? ext.UNMASKED_RENDERER_WEBGL : gl.RENDERER));
+    return /swiftshader|llvmpipe|software|basic render/i.test(name);
+  } catch { return false; }
 }
