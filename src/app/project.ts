@@ -165,6 +165,8 @@ export interface BuiltModel {
   rev?: number;
   /** Set when the model is a robot: how it moves and its surroundings. */
   robot?: RobotSpec;
+  /** What impacts have done to its parts (crash tests and live collisions), until repaired. Keys: part ids, or joint:<id> for servo gears. */
+  damage?: Record<string, import('./damage').PartDamage>;
 }
 
 export const defaultAutoOpts = (): AutoBuildOpts => ({ style: 'auto', wall: 2, clearance: 1, battery: false, mount: 'none' });

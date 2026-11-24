@@ -19,6 +19,7 @@ import { movable, type BuiltPart, type BuiltModel, type Joint, type World } from
 import { BodyPose, LegContact, clampJoint, diffDrive, driveBody, footRest, forwardKinematics, onTrack, raycastWorld, restMatrix, sensorRay, wheelsOf } from './kinematics';
 import { COMPONENTS, SERVO_TYPES } from '../hw/library/components';
 import { Physics, loadPhysics, physicsReady, type PhysicsWorld } from './physics';
+import { DamageTracker, jointKey } from './damage';
 import type { CompInstance, DeviceModel } from '../hw/types';
 
 /** What the simulator needs from the bench. */
@@ -64,6 +65,9 @@ export class RobotSim {
   private wheelDeg = new Map<string, number>();
   /** Rigid-body physics, when on (spec.physics) and loaded. */
   phys: Physics | null = null;
+  /** What collisions do to the parts (under physics), and a callback when something breaks. */
+  damage: DamageTracker | null = null;
+  onBreak?: (lines: string[]) => void;
   /** Scenes: the shared physics world this robot joins (instead of one of its own). */
   physWorld?: PhysicsWorld;
   /** Servo commands after slew (what the firmware asked for), separate from the measured q under physics. */
@@ -127,9 +131,19 @@ export class RobotSim {
     this.phys = this.makePhysics();
   }
   private makePhysics() {
-    const p = new Physics(this.model, this.pose, j => (j.drive ? this.servoOf(j, this.comps).torque : 0), this.physWorld);
+    const torque = (j: Joint) => (j.drive ? this.servoOf(j, this.comps).torque : 0);
+    const p = new Physics(this.model, this.pose, torque, this.physWorld);
     for (const js of this.joints) this.cmd.set(js.id, js.q);
+    this.damage = new DamageTracker(this.model, uid => this.comps.find(c => c.uid === uid)?.type, torque, this.model.auto?.wall ?? 2);
+    applyBreaks(p, this.damage, this.damage.brokenKeys()); // damage from before (a crash test) still applies
     return p;
+  }
+  /** Is this part (or joint) broken? */
+  isBroken(key: string) { return (this.model.damage?.[key]?.level ?? 0) >= 1; }
+  /** No power: the board, the battery or the motor driver is broken, so the firmware can't move anything. */
+  get powerless() {
+    const d = this.model.damage; if (!d) return false;
+    return this.model.parts.some(p => (d[p.id]?.level ?? 0) >= 1 && (p.comp === 'board' || p.detail === 'battery' || p.detail?.startsWith('pcb:') || /tb6612|l298n|pca9685/.test(p.detail ?? '')));
   }
   /** Rebuild physics from the current pose (after reset or a model edit). */
   private rebuildPhysics() { if (this.phys && physicsReady()) { this.phys.dispose(); this.phys = this.makePhysics(); } }
@@ -163,6 +177,7 @@ export class RobotSim {
   step(dt: number, comps: CompInstance[], bench: BenchLike, running: boolean) {
     dt = Math.min(dt, 0.05);
     this.comps = comps;
+    if (running && this.powerless) running = false; // a broken board / battery / driver: nothing the firmware says arrives
     if (this.phys) return this.stepPhysics(dt, comps, bench, running);
     const wheelRates = new Map<string, number>();
     const before = new Map(this.q);
@@ -170,6 +185,7 @@ export class RobotSim {
       const j = js.joint, t = running ? this.target(j, comps, bench) : null;
       js.driven = !!t;
       let q = this.q.get(js.id) ?? 0;
+      if (this.isBroken(jointKey(js.id)) || this.isBroken(js.id)) { this.q.set(js.id, q); js.q = q; continue; } // stripped / snapped: it doesn't follow
       if (t?.speed != null) {
         const rate = t.speed * t.rate!;
         if (j.type === 'wheel') wheelRates.set(js.id, rate);
@@ -280,6 +296,10 @@ export class RobotSim {
       targets.set(js.id, c);
     }
     const q = this.phys!.step(dt, targets);
+    if (this.damage) {
+      const broke = this.damage.apply(this.phys!.impacts());
+      if (broke.length) { applyBreaks(this.phys!, this.damage, broke); this.onBreak?.(broke.map(k => this.damage!.describe(k))); }
+    }
     for (const js of this.joints) {
       const v = q.get(js.id) ?? 0;
       if (js.joint.type === 'wheel') { const prev = this.q.get(js.id) ?? 0, d = ((v - prev + 540) % 360) - 180; this.q.set(js.id, prev + d); js.q = prev + d; this.wheelDeg.set(js.id, prev + d); }
@@ -292,10 +312,22 @@ export class RobotSim {
     this.body.m.copy(this.pose.get(this.phys!.root().head.id) ?? new THREE.Matrix4());
     this.legs.fallen = new THREE.Vector3(0, 1, 0).transformDirection(this.body.m).y < 0.5;
     // pickable blocks are rigid bodies: their poses come from the physics
-    for (const mv of this.phys!.movables()) { const o = this.objects.find(x => x.index === mv.index); if (o) { o.held = undefined; o.m.compose(new THREE.Vector3(...mv.pos), new THREE.Quaternion(...mv.quat), new THREE.Vector3(1, 1, 1)); } }
+    for (const mv of this.phys!.movables()) { const o = this.objects.find(x => x.index === mv.index); if (o) { o.m.compose(new THREE.Vector3(...mv.pos), new THREE.Quaternion(...mv.quat), new THREE.Vector3(1, 1, 1)); o.held = this.physHeld(o); } }
     this.sense(comps, bench, dt);
   }
 
+  /** Under physics a block is held by friction: it's off the floor and between a gripper's fingers. */
+  private physHeld(o: WorldObject): WorldObject['held'] {
+    if (!o.pick) return undefined;
+    const p = new THREE.Vector3().setFromMatrixPosition(o.m);
+    if (p.y < o.size.y / 2 + 6) return undefined;
+    for (const g of this.grippers) {
+      const a = this.pose.get(g.a.id), b = this.pose.get(g.b.id); if (!a || !b) continue;
+      const mid = new THREE.Vector3(...g.a.pos).applyMatrix4(a).add(new THREE.Vector3(...g.b.pos).applyMatrix4(b)).multiplyScalar(0.5);
+      if (mid.distanceTo(p) < Math.max(o.size.x, o.size.y, o.size.z) * 1.5 + 10) { const hand = this.pose.get(g.parent) ?? new THREE.Matrix4(); return { by: g.a.id, rel: hand.clone().invert().multiply(o.m), sim: this }; }
+    }
+    return undefined;
+  }
   /** Poses without the body moving (e.g. on reset or after editing): stand on the floor. */
   settle() {
     this.solve();
@@ -363,6 +395,7 @@ export class RobotSim {
       const part = this.model.parts.find(p => p.comp === c.uid && p.kind === 'internal') ?? this.model.parts.find(p => p.comp === c.uid);
       const m = bench.model(c.uid); if (!m) continue;
       const st = m.state as any;
+      if (part && this.isBroken(part.id)) { if (c.type === 'hcsr04') st.cm = 0; this.readings.set(c.uid, 'broken'); continue; } // a broken sensor reads nothing
       if ((c.type === 'hcsr04' || c.type === 'irsensor') && part && world) {
         const { o, d } = sensorRay(part, this.pose.get(part.id)!);
         const mm = raycastWorld(world, o, d);
@@ -391,6 +424,23 @@ export class RobotSim {
     void dt;
   }
 }
+/** Apply what broke: stripped servos go limp, snapped links and wheels come off. */
+export function applyBreaks(p: Physics, d: DamageTracker, keys: string[]) {
+  for (const k of keys) {
+    const rt = d.ratings.get(k); if (!rt) continue;
+    const jp = d.jointPart.get(k);
+    if (jp) { p.makeLimp(jp); continue; }
+    if (rt.effect === 'detach') p.detach(k);
+    else if (rt.effect === 'limp') {
+      // a servo / gear motor drives the joint nearest to it
+      const part = d.model.parts.find(x => x.id === k); if (!part) continue;
+      const near = d.model.parts.filter(x => x.joint && x.joint.type !== 'fixed' && x.joint.drive)
+        .sort((a, b) => dist(a.joint!.pivot, part.pos) - dist(b.joint!.pivot, part.pos))[0];
+      if (near) p.makeLimp(near.id);
+    }
+  }
+}
+const dist = (a: number[], b: number[]) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 /** The movable things a world starts with (every obstacle that isn't fixed), by obstacle index. */
 export function makeObjects(world: World | undefined): WorldObject[] {
   return (world?.obstacles ?? []).flatMap((o, index) => {

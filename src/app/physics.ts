@@ -19,6 +19,11 @@
  * its links and joints to a world: its own (one robot), or a scene's shared
  * world, where robots collide with each other and share the blocks.
  *
+ * Impacts: every collider reports its contact forces, each link its deceleration
+ * (g) and each joint the twist that contacts put on it (N·m), so the damage
+ * model (damage.ts) can tell what an impact did to each part. Broken servos go
+ * limp; broken links come off.
+ *
  * Units inside Rapier: metres, kilograms, seconds. Formframe: mm, Y up.
  */
 import * as THREE from 'three';
@@ -35,11 +40,18 @@ export function loadPhysics(): Promise<typeof RAPIER_T> {
   return loading;
 }
 export const physicsReady = () => !!R;
+/** The loaded engine (after loadPhysics). */
+export const rapier = () => R;
+
+/** One frame's impacts on a robot or device: peak contact force (N) and deceleration (g) per part, peak twist (N·m) per joint. */
+export interface Impacts { force: Map<string, number>; shock: Map<string, number>; twist: Map<string, number> }
 
 const MM = 0.001;
 /** Servo weights (g). */
 const SERVO_G: Record<string, number> = { sg90: 9, mg90s: 13, mg996r: 55, ds3218: 60 };
 const KGCM = 0.0980665; // kg·cm → N·m
+/** Impact loads are averaged over this long (s). */
+const WINDOW = 0.002;
 // Collision groups: bit 0 blocks, bit 1 the fixed world (floor, walls, obstacles), bits 2–15 one per robot.
 const BLOCKS = 0x0001, FIXED = 0x0002, ALL = 0xffff;
 const groups = (member: number, filter: number) => ((member & ALL) << 16) | (filter & ALL);
@@ -56,9 +68,13 @@ export class PhysicsWorld {
   /** Fixed sub-steps per frame (stiff servos on light links need small steps). */
   substeps = 12;
   private bits = 0;
+  private events: RAPIER_T.EventQueue;
+  /** Which robot owns a collider (contact-force events come by collider handle). */
+  owner = new Map<number, Physics>();
   constructor(w?: World) {
     if (!R) throw new Error('Physics engine not loaded');
     this.world = new R.World({ x: 0, y: -9.81, z: 0 });
+    this.events = new R.EventQueue(true);
     (this.world as any).numSolverIterations = 24; // stiff servo chains on light links need more iterations
     this.addWorld(w);
   }
@@ -94,15 +110,20 @@ export class PhysicsWorld {
 
   /** Advance everything by dt: each robot's motors chase the targets it set (Physics.setTargets). */
   step(dt: number) {
-    this.world.timestep = dt / this.substeps;
+    const h = (this.world.timestep = dt / this.substeps);
     for (let s = 0; s < this.substeps; s++) {
       for (const rb of this.robots) rb.drive();
-      this.world.step();
+      this.world.step(this.events);
+      this.events.drainContactForceEvents(e => {
+        const F = e.totalForceMagnitude(), d = e.maxForceDirection();
+        for (const c of [e.collider1(), e.collider2()]) this.owner.get(c)?.contact(c, F, d);
+      });
+      for (const rb of this.robots) rb.sampleShock(h);
     }
   }
   /** Where the blocks are now: index → [x, y, z] mm and quaternion. */
   movables() { return this.movable.map(m => { const t = m.body.translation(), q = m.body.rotation(); return { index: m.index, pos: [t.x / MM, t.y / MM, t.z / MM] as [number, number, number], quat: [q.x, q.y, q.z, q.w] as [number, number, number, number] }; }); }
-  dispose() { this.world.free(); this.robots = []; }
+  dispose() { this.world.free(); this.events.free(); this.robots = []; }
 }
 
 
@@ -120,6 +141,20 @@ export class Physics {
   private own: boolean;
   private targets = new Map<string, number | { vel: number }>();
   private linkOfPart = new Map<string, Link>();
+  /** collider handle → part id */
+  private partOfCollider = new Map<number, string>();
+  private imp: Impacts = { force: new Map(), shock: new Map(), twist: new Map() };
+  /**
+   * Loads are averaged over a short window (WINDOW s, ~2 ms): a real impact has some give and
+   * lasts a millisecond or more, while a rigid solver can spike for one sub-step.
+   */
+  private subForce = new Map<string, number>();
+  private subTwist = new Map<string, number>();
+  private ring = new Map<string, number[]>();
+  private velHist = new Map<Link, THREE.Vector3[]>();
+  /** Joints whose servo is broken (they swing freely), and links that have broken off. */
+  limp = new Set<string>();
+  detached = new Set<string>();
   get movable() { return this.pw.movable; }
   get substeps() { return this.pw.substeps; }
   set substeps(n: number) { this.pw.substeps = n; }
@@ -137,11 +172,20 @@ export class Physics {
     this.bit = this.pw.takeBit();
     this.pw.robots.push(this);
     const ROBOT = this.pw.robotGroups(this.bit);
+    // inside an enclosure, the parts inside don't touch the world (the shell does); they still weigh what they weigh
+    const enclosed = model.parts.some(p => p.kind === 'shell');
     // ---- links (same grouping as URDF export)
     const parts = model.parts.filter(p => p.role !== 'ignore');
     const byId = new Map(parts.map(p => [p.id, p]));
     const moving = (p: BuiltPart) => !!p.joint && p.joint.type !== 'fixed';
-    const headOf = (p: BuiltPart): BuiltPart => { let q = p, n = 0; while (q.parent && byId.has(q.parent) && !moving(q) && n++ < 64) q = byId.get(q.parent)!; return q; };
+    // parts attached to nothing belong to the biggest one (a device's parts are all one object; so is a robot's frame)
+    const loose = parts.filter(p => !p.parent || !byId.has(p.parent));
+    const main = loose.reduce<BuiltPart | null>((a, p) => (!a || vol(p) * (p.kind === 'internal' ? 0.1 : 1) > vol(a) * (a.kind === 'internal' ? 0.1 : 1) ? p : a), null);
+    const headOf = (p: BuiltPart): BuiltPart => {
+      let q = p, n = 0;
+      while (!moving(q) && n++ < 64) { if (q.parent && byId.has(q.parent)) q = byId.get(q.parent)!; else if (main && q !== main) q = main; else break; }
+      return q;
+    };
     const heads = parts.filter(p => headOf(p) === p);
     // mass: servos weigh what they weigh (they're most of a walking robot), the rest by volume.
     // Every moving link also carries the servo that drives it.
@@ -156,7 +200,7 @@ export class Physics {
       const origin = new THREE.Vector3(...(h.joint ? h.joint.pivot : (centroid(members) as [number, number, number])));
       const M = pose.get(h.id) ?? new THREE.Matrix4();
       const wp = origin.clone().applyMatrix4(M), q = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().extractRotation(M));
-      const isRoot = !h.parent || !byId.has(h.parent);
+      const isRoot = h === main;
       const desc = (isRoot && spec.mobile === 'fixed' ? r.RigidBodyDesc.fixed() : r.RigidBodyDesc.dynamic())
         .setTranslation(wp.x * MM, wp.y * MM, wp.z * MM).setRotation({ x: q.x, y: q.y, z: q.z, w: q.w })
         .setLinearDamping(0.05).setAngularDamping(0.2).setCanSleep(false).setCcdEnabled(true);
@@ -167,9 +211,11 @@ export class Physics {
         const c = colliderFor(r, p, origin);
         if (!c) continue;
         const v = c.vol;
-        c.desc.setDensity(mass / Math.max(1e-9, v)).setCollisionGroups(ROBOT)
-          .setFriction(p.foot || p.joint?.type === 'wheel' || p.detail === 'wheel' || p.detail === 'foot' || p.detail === 'finger' ? 1.1 : 0.45).setRestitution(0.05);
-        this.world.createCollider(c.desc, body);
+        c.desc.setDensity(mass / Math.max(1e-9, v)).setCollisionGroups(enclosed && p.kind === 'internal' ? 0 : ROBOT)
+          .setFriction(p.foot || p.joint?.type === 'wheel' || p.detail === 'wheel' || p.detail === 'foot' || p.detail === 'finger' ? 1.1 : 0.45).setRestitution(0.05)
+          .setActiveEvents(r.ActiveEvents.CONTACT_FORCE_EVENTS).setContactForceEventThreshold(2);
+        const col = this.world.createCollider(c.desc, body);
+        this.partOfCollider.set(col.handle, p.id); this.pw.owner.set(col.handle, this);
       }
       this.links.push(link);
       for (const p of members) this.linkOfPart.set(p.id, link);
@@ -212,9 +258,11 @@ export class Physics {
   /** Apply the targets to the motors (every sub-step). */
   drive() {
     for (const pj of this.joints) {
+      const ij = pj.j as any;
+      if (this.detached.has(pj.id)) continue;
+      if (this.limp.has(pj.id)) { ij.configureMotorVelocity(0, pj.maxTorque * 0.002); continue; } // stripped gears: it swings, with a little drag
       const t = this.targets.get(pj.id);
       if (t == null) continue;
-      const ij = pj.j as any;
       if (typeof t === 'object') { ij.configureMotorVelocity((t.vel * Math.PI) / 180, 2); continue; }
       if (pj.joint.type === 'prismatic') { ij.configureMotorPosition(t * MM, pj.stiffness, 60); continue; }
       // clamp the error so stiffness × error never exceeds the servo's torque
@@ -223,6 +271,66 @@ export class Physics {
       ij.configureMotorPosition((goal * Math.PI) / 180, pj.stiffness, pj.stiffness * 0.04);
     }
   }
+  /** A contact-force event on one of this robot's colliders (N, direction of the largest contact force). */
+  contact(handle: number, F: number, dir: { x: number; y: number; z: number }) {
+    const id = this.partOfCollider.get(handle); if (!id) return;
+    this.subForce.set(id, (this.subForce.get(id) ?? 0) + F);
+    // the twist this contact puts on every joint between the part and the body: |(contact − pivot) × F · axis|
+    const link = this.linkOfPart.get(id); if (!link) return;
+    const col = this.world.getCollider(handle), ct = col.translation(), c = new THREE.Vector3(ct.x, ct.y, ct.z);
+    const force = new THREE.Vector3(dir.x, dir.y, dir.z).multiplyScalar(F);
+    let L: Link | undefined = link;
+    for (let n = 0; L && n < 32; n++) {
+      const pj = this.joints.find(j => j.link === L); if (!pj) break;
+      if (pj.joint.type === 'revolute') {
+        const t = pj.link.body.translation(), q = pj.link.body.rotation(), rq = new THREE.Quaternion(q.x, q.y, q.z, q.w);
+        const piv = new THREE.Vector3(...pj.joint.pivot).sub(pj.link.origin).multiplyScalar(MM).applyQuaternion(rq).add(new THREE.Vector3(t.x, t.y, t.z));
+        const axis = new THREE.Vector3(...pj.joint.axis).normalize().applyQuaternion(rq);
+        const tau = Math.abs(c.clone().sub(piv).cross(force).dot(axis));
+        this.subTwist.set(pj.id, (this.subTwist.get(pj.id) ?? 0) + tau);
+      }
+      L = pj.parent;
+    }
+  }
+  /** End of a sub-step: fold this sub-step's loads into the windowed peaks; each link's deceleration over the window, in g. */
+  sampleShock(h: number) {
+    const n = Math.max(2, Math.ceil(WINDOW / h - 0.01));
+    const push = (key: string, v: number) => { let r = this.ring.get(key); if (!r) this.ring.set(key, (r = [])); r.push(v); if (r.length > n) r.shift(); return r.reduce((a, b) => a + b, 0) / n; };
+    for (const id of new Set([...this.subForce.keys(), ...[...this.ring.keys()].filter(k => k.startsWith('f:')).map(k => k.slice(2))])) {
+      const avg = push('f:' + id, this.subForce.get(id) ?? 0);
+      if (avg > (this.imp.force.get(id) ?? 0)) this.imp.force.set(id, avg);
+    }
+    for (const id of new Set([...this.subTwist.keys(), ...[...this.ring.keys()].filter(k => k.startsWith('t:')).map(k => k.slice(2))])) {
+      const avg = push('t:' + id, this.subTwist.get(id) ?? 0);
+      if (avg > (this.imp.twist.get(id) ?? 0)) this.imp.twist.set(id, avg);
+    }
+    this.subForce.clear(); this.subTwist.clear();
+    for (const l of this.links) {
+      const v = l.body.linvel(), now = new THREE.Vector3(v.x, v.y, v.z);
+      let hist = this.velHist.get(l); if (!hist) this.velHist.set(l, (hist = []));
+      hist.push(now); if (hist.length > n + 1) hist.shift();
+      if (hist.length < n + 1) continue;
+      const g = now.distanceTo(hist[0]) / (n * h) / 9.81;
+      for (const p of l.parts) if (g > (this.imp.shock.get(p.id) ?? 0)) this.imp.shock.set(p.id, g);
+    }
+  }
+  /** Forget velocities (after teleporting or launching bodies), so the jump isn't read as a shock. */
+  resetShock() { this.velHist.clear(); this.ring.clear(); }
+  /** The impacts since the last call. */
+  impacts(): Impacts { const out = this.imp; this.imp = { force: new Map(), shock: new Map(), twist: new Map() }; return out; }
+  /** A servo whose gears are stripped: the joint swings freely. */
+  makeLimp(jointId: string) { this.limp.add(jointId); }
+  /** A link snaps off at its joint (bent bracket, wheel off its shaft): it falls away. */
+  detach(partId: string) {
+    const link = this.linkOfPart.get(partId); if (!link) return;
+    const pj = this.joints.find(j => j.link === link); if (!pj || this.detached.has(pj.id)) return;
+    this.world.removeImpulseJoint(pj.j, true); this.detached.add(pj.id);
+  }
+  /** The link a part belongs to, and the joint (if any) that holds that link on. */
+  jointOfPart(partId: string) { const l = this.linkOfPart.get(partId); return l ? this.joints.find(j => j.link === l) : undefined; }
+  /** Every link body (to launch or lift the whole robot). */
+  bodies() { return this.links.map(l => l.body); }
+
   /** Measured joint values (deg or mm). */
   measured(): Map<string, number> {
     const out = new Map<string, number>();
@@ -256,6 +364,7 @@ export class Physics {
   root(): Link { return this.links.find(l => !l.head.parent) ?? this.links[0]; }
   /** Leave the world: free it if it's this robot's own, else take this robot's bodies (and their colliders and joints) out of the shared one. */
   dispose() {
+    for (const h of this.partOfCollider.keys()) this.pw.owner.delete(h);
     if (this.own) { this.pw.dispose(); return; }
     for (const l of this.links) this.world.removeRigidBody(l.body);
     this.pw.freeBit(this.bit);
