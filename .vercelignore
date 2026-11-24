@@ -1,0 +1,16 @@
+# never upload secrets or local build/test output to Vercel
+.env
+.env.*
+!.env.example
+node_modules
+dist
+test-results
+playwright-report
+blob-report
+coverage
+public/vendor
+vendor/ArduinoCore-avr
+vendor/Adafruit_NeoPixel
+*.log
+.DS_Store
+.claude
