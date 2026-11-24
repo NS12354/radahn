@@ -102,7 +102,7 @@ export class Viewport {
     // backdrop: a soft studio gradient (post-processing makes the canvas opaque, so the scene paints its own)
     const bg = document.createElement('canvas'); bg.width = 4; bg.height = 256;
     const bgc = bg.getContext('2d')!, bgg = bgc.createLinearGradient(0, 0, 0, 256);
-    bgg.addColorStop(0, '#2c2f36'); bgg.addColorStop(0.6, '#1d1f24'); bgg.addColorStop(1, '#141519');
+    bgg.addColorStop(0, '#262a31'); bgg.addColorStop(0.6, '#17191d'); bgg.addColorStop(1, '#0f1013');
     bgc.fillStyle = bgg; bgc.fillRect(0, 0, 4, 256);
     const bgt = new THREE.CanvasTexture(bg); bgt.colorSpace = THREE.SRGBColorSpace;
     this.scene.background = bgt;

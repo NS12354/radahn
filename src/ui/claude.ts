@@ -204,7 +204,7 @@ function ensureTerm() {
   if (term) return;
   term = new Terminal({
     fontFamily: "'JetBrains Mono', Menlo, monospace", fontSize: 11.5, lineHeight: 1.15, cursorBlink: true, allowProposedApi: false, scrollback: 5000,
-    theme: { background: '#151517', foreground: '#dcdfe6', cursor: '#d97757', selectionBackground: '#4f7cff55', black: '#1e1e1f', brightBlack: '#6c6c73' },
+    theme: { background: '#0b0c0e', foreground: '#dcdfe6', cursor: '#d97757', selectionBackground: '#76b90055', black: '#1e1e1f', brightBlack: '#6c6c73' },
   });
   fit = new FitAddon(); term.loadAddon(fit);
   term.open($('#claudeTerm'));

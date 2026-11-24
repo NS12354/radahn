@@ -92,14 +92,14 @@ function flashTr(i: number) { const d = document.querySelector(`.tr[data-i="${i}
 
 const NODE: Record<string, [number, number]> = { home: [90, 66], set: [250, 66], eco: [410, 66], away: [570, 66] };
 export function drawGraph(app: App, fired = -1) {
-  let s = '<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0L10,5L0,10z" fill="#6c6c73"/></marker><marker id="ahb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0L10,5L0,10z" fill="#4f7cff"/></marker></defs>';
+  let s = '<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0L10,5L0,10z" fill="#6c6c73"/></marker><marker id="ahb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0L10,5L0,10z" fill="#76b900"/></marker></defs>';
   const groups: Record<string, { from: string; to: string; trigs: string[]; idx: number[] }> = {};
   app.project.interactions.forEach((t, i) => { const k = t.from + '>' + t.to; (groups[k] ||= { from: t.from, to: t.to, trigs: [], idx: [] }); groups[k].trigs.push(TRIGGERS[t.trig]); groups[k].idx.push(i); });
   const keys = Object.keys(NODE);
   for (const g of Object.values(groups)) {
     const a = NODE[g.from], b = NODE[g.to]; if (!a || !b) continue;
-    const on = g.idx.includes(fired), col = on ? '#4f7cff' : '#55555b', mk = on ? 'ahb' : 'ah', lbl = [...new Set(g.trigs)].join(' · ');
-    const tc = on ? '#cfd9ff' : '#8a8a92';
+    const on = g.idx.includes(fired), col = on ? '#76b900' : '#55555b', mk = on ? 'ahb' : 'ah', lbl = [...new Set(g.trigs)].join(' · ');
+    const tc = on ? '#a8db5f' : '#8a8a92';
     if (g.from === g.to) {
       const y = a[1] - 20, h = 26;
       s += `<path d="M${a[0] - 14},${y} C${a[0] - 40},${y - h} ${a[0] + 40},${y - h} ${a[0] + 14},${y}" fill="none" stroke="${col}" stroke-width="${on ? 2 : 1.2}" marker-end="url(#${mk})"/><text x="${a[0]}" y="${y - h * 0.75 - 3}" text-anchor="middle" fill="${tc}" font-size="10">${lbl}</text>`;
@@ -112,7 +112,7 @@ export function drawGraph(app: App, fired = -1) {
   }
   for (const [k, [x, y]] of Object.entries(NODE)) {
     const cur = app.sm.state === k;
-    s += `<g><rect x="${x - 30}" y="${y - 16}" width="60" height="32" rx="8" fill="${cur ? '#2f3a5c' : '#2a2a2c'}" stroke="${cur ? '#4f7cff' : '#45454b'}" stroke-width="${cur ? 2 : 1}"/><text x="${x}" y="${y + 4}" text-anchor="middle" fill="${cur ? '#fff' : '#cfcfd4'}" font-size="11" font-weight="500">${STATES[k]}</text></g>`;
+    s += `<g><rect x="${x - 30}" y="${y - 16}" width="60" height="32" rx="8" fill="${cur ? '#1e2a10' : '#1c1e22'}" stroke="${cur ? '#76b900' : '#33363c'}" stroke-width="${cur ? 2 : 1}"/><text x="${x}" y="${y + 4}" text-anchor="middle" fill="${cur ? '#fff' : '#cfcfd4'}" font-size="11" font-weight="500">${STATES[k]}</text></g>`;
   }
   $('#graph').innerHTML = s;
 }

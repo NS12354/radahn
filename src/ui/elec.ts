@@ -479,7 +479,7 @@ export function elecFrame(dt: number) {
     if (kind(c) === 'servo') d.querySelector('.arm')!.setAttribute('transform', `rotate(${(st.angle ?? 90) - 90} 35 26)`);
     if (kind(c) === 'relay') { const x = d.querySelector('.rlv') as HTMLElement; x.textContent = st.on ? 'ON' : 'OFF'; x.style.color = st.on ? 'var(--heat)' : ''; }
     if (kind(c) === 'generic') { const x = d.querySelector('.genv') as HTMLElement; x.textContent = st.rx || st.tx ? `${st.rx} in · ${st.tx} out${st.last ? ' · ' + st.last : ''}` : st.edges ? `${st.edges} edges` : 'idle'; }
-    if (kind(c) === 'haptic') { const x = d.querySelector('.hpv') as HTMLElement; x.textContent = st.on ? 'buzzing' : 'idle'; x.style.color = st.on ? '#9db4ff' : ''; }
+    if (kind(c) === 'haptic') { const x = d.querySelector('.hpv') as HTMLElement; x.textContent = st.on ? 'buzzing' : 'idle'; x.style.color = st.on ? '#a8db5f' : ''; }
   }
 }
 
