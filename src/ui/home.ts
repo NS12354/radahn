@@ -2,6 +2,7 @@ import { $, el, esc } from './dom';
 import { BOARDS, boardOptions } from '../hw/library/boards';
 import { ROBOT_KINDS } from '../app/robots';
 import { listProjects, persistent, type ProjectMeta } from '../app/store';
+import { listScenes, type SceneMeta } from '../app/scene';
 
 /** Actions the home screen asks the app to perform. */
 export interface HomeHost {
@@ -14,6 +15,9 @@ export interface HomeHost {
   duplicateProject(id: string): void;
   deleteProject(id: string, name: string): void;
   startTour(): void;
+  newScene(): void;
+  openScene(id: string): void;
+  deleteScene(id: string, name: string): void;
 }
 
 let host: HomeHost;
@@ -55,9 +59,31 @@ export async function renderHome() {
   $('#homeSearch').style.display = all.length > 4 ? '' : 'none';
   $('#homeWarn').style.display = persistent ? 'none' : '';
   const g = $('#homeGrid'); g.innerHTML = '';
-  if (!all.length) { g.appendChild(el('div', 'hempty', 'No projects yet. Start a blank one above, or open the The First Step to look around.')); return; }
-  if (!list.length) { g.appendChild(el('div', 'hempty', `No projects match “${esc(query)}”.`)); return; }
+  if (!all.length) { renderScenes(); g.appendChild(el('div', 'hempty', 'No projects yet. Start a blank one above, or open the The First Step to look around.')); return; }
+  if (!list.length) { renderScenes(); g.appendChild(el('div', 'hempty', `No projects match “${esc(query)}”.`)); return; }
   for (const p of list) g.appendChild(card(p));
+  renderScenes();
+}
+
+async function renderScenes() {
+  const g = $('#sceneGrid'); if (!g) return;
+  const all = await listScenes();
+  g.innerHTML = '';
+  const add = el('button', 'start scenenew');
+  add.innerHTML = '<div class="ic ic-scene"></div><b>New scene</b><span>Put robots from your projects in one world, name them, and run them all at once</span>';
+  add.onclick = () => host.newScene();
+  g.appendChild(add);
+  for (const s of all) g.appendChild(sceneCard(s));
+}
+function sceneCard(s: SceneMeta) {
+  const c = el('div', 'pcard');
+  c.tabIndex = 0;
+  c.innerHTML = `<div class="th">${s.thumb ? `<img src="${s.thumb}" alt="">` : '<span class="blank">Empty scene</span>'}</div>
+    <div class="pi"><b title="${esc(s.name)}">${esc(s.name)}</b><span>${s.robots} robot${s.robots === 1 ? '' : 's'} · edited ${ago(s.updated)}</span></div>
+    <div class="pa"><button data-x="del" title="Delete">Delete</button></div>`;
+  c.onclick = e => { if ((e.target as HTMLElement).closest('[data-x]')) host.deleteScene(s.id, s.name); else host.openScene(s.id); };
+  c.onkeydown = e => { if (e.key === 'Enter' && e.target === c) host.openScene(s.id); };
+  return c;
 }
 
 function card(p: ProjectMeta) {

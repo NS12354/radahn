@@ -98,6 +98,16 @@ How it works (`src/app/kinematics.ts`, `src/app/robot.ts`):
   - It publishes `/joint_states` (with the URDF's joint names) and `/formframe/pose`.
   - It listens to `/cmd_vel` (wheeled robots, while no firmware is running) and `/formframe/joint_commands`.
 
+### Scenes: several robots in one world
+
+**Scenes** on the home screen put robots from your projects into one shared world, like a digital twin of a cell, a floor or a fleet. `src/app/scene.ts` is the document and `src/app/twin.ts` is the simulator.
+
+- **Copies, not duplicates.** Each robot in a scene points at a robot project in your library, with its own name, position and heading. Add the same design several times (three rovers, two arms), give each copy its own name, and each one runs its own firmware on its own emulated board. *Open in editor* edits the design, and every copy picks up the change the next time the scene opens.
+- **One shared world.** All robots share the floor, walls, line track, obstacles and blocks. Any arm can pick up any block, robots bump into each other, and one robot's sonar sees the others. *+ Block* with an arm selected puts a block (and a pad) where that arm's demo reaches.
+- **Run together.** *Run all* starts every robot's firmware. Each robot also has its own Run/Stop. The console shows every robot's serial output, labelled by name, with a tab per robot.
+- **Arrange.** Drag a robot to move it and Shift-drag to turn it, or type X, Z and heading. Robots can only be moved while stopped. *Reset* puts robots and blocks back where they started.
+- **Limits.** Scenes use the kinematic simulator: the physics option in a robot's own project isn't used there yet. Every emulated chip (RP2040, ATmega) shares one CPU, so three or more run noticeably slower than real time; a behavioral board (ESP32, Pi) is lighter. Physical boards and the ROS 2 bridge don't join scenes.
+
 ### The emulator runs slower than real time
 
 rp2040js typically runs at 0.3–0.5× real time on a laptop, and the speed is shown next to the target selector. Time-based code (`sleep_ms`, `ticks_ms`) uses emulated time, so behavior stays correct, just slower. Wiring and protocol errors show up exactly as on hardware.

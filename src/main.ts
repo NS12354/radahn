@@ -18,6 +18,8 @@ import { robotProject, type RobotKind } from './app/robots';
 import { ElectronicsView } from './scene/electronics';
 import { gizmoBusy, initModeler, newBuiltModel, runAutoBuild, syncGizmo } from './ui/modeler';
 import { atHome, initHome, renderHome, showHome, hideHome } from './ui/home';
+import { initScene, openScene } from './ui/scene';
+import { deleteScene, loadScene, newScene, newSceneId, saveScene } from './app/scene';
 import { endTour, initTour, startTour, tourSeen, touring } from './ui/tour';
 import { listen, modelerUrl, post } from './app/sync';
 import { BlenderLink } from './app/blenderlink';
@@ -110,7 +112,11 @@ class FormframeApp implements App {
       duplicateProject: id => this.duplicateProject(id),
       deleteProject: (id, name) => this.removeProject(id, name),
       startTour: () => this.tourFromHome(),
+      newScene: async () => { const sid = newSceneId(), sc = newScene(); await saveScene(sid, sc); hideHome(); await openScene(sid, sc); },
+      openScene: async sid => { const sc = await loadScene(sid).catch(() => null); if (!sc) { toast('That scene could not be found'); renderHome(); return; } hideHome(); await openScene(sid, sc); },
+      deleteScene: async (sid, name) => { if (!window.confirm?.(`Delete the scene "${name}"? The robot projects in it are kept.`)) return; await deleteScene(sid); renderHome(); },
     });
+    initScene({ base: BASE, studio: this.viewport, openProject: pid => this.openProject(pid), goHome: () => showHome() });
     $('#hTour').classList.toggle('nudge', !tourSeen());
     listen(m => {
       if (m.type === 'built' && m.id === this.projectId) this.syncBuilt();

@@ -32,7 +32,7 @@ const MOTOR_DPS: Record<string, number> = { contservo: 780, default: 1200 };
 /** Two prismatic fingers driven by the same actuator, on the same parent. */
 interface Gripper { a: BuiltPart; b: BuiltPart; parent: string }
 /** A pickable block in the world: pose in world mm, and the hand holding it (pose relative to the hand). */
-export interface WorldObject { index: number; size: THREE.Vector3; shape: 'box' | 'cyl'; m: THREE.Matrix4; vy: number; held?: { by: string; rel: THREE.Matrix4 } }
+export interface WorldObject { index: number; size: THREE.Vector3; shape: 'box' | 'cyl'; m: THREE.Matrix4; vy: number; held?: { by: string; rel: THREE.Matrix4; sim?: RobotSim } }
 
 export interface JointState { id: string; name: string; joint: Joint; q: number; target: number; driven: boolean; sag: number; torque?: number; load?: number }
 
@@ -52,6 +52,14 @@ export class RobotSim {
   /** Pickable blocks (world obstacles with pick: true). */
   objects: WorldObject[] = [];
   private objSig = '';
+  /**
+   * Scenes: the shared world (instead of the model's own), the shared blocks (the scene
+   * makes them fall), other robots as obstacles, and where this robot stands (its home pose).
+   */
+  sceneWorld?: World;
+  sharedObjects = false;
+  others: World['obstacles'] = [];
+  home = new THREE.Matrix4();
   private grippers: Gripper[] = [];
   private wheelDeg = new Map<string, number>();
   /** Rigid-body physics, when on (spec.physics) and loaded. */
@@ -74,22 +82,30 @@ export class RobotSim {
   }
   /** Put the pickable blocks where the world says (when the world changed, or on reset). */
   private syncObjects(force = false) {
-    const obs = this.spec?.world?.obstacles ?? [];
+    if (this.sharedObjects) return;
+    const obs = this.world?.obstacles ?? [];
     const sig = JSON.stringify(obs);
     if (!force && sig === this.objSig) return;
     this.objSig = sig;
-    this.objects = obs.flatMap((o, index) => {
-      if (!o.pick) return [];
-      const m = new THREE.Matrix4().compose(new THREE.Vector3(o.pos[0], o.size[1] / 2, o.pos[1]), new THREE.Quaternion().setFromAxisAngle(UP, (o.rot ?? 0) * D2R), ONE);
-      return [{ index, shape: o.shape, size: new THREE.Vector3(...o.size), m, vy: 0 }];
-    });
+    this.objects = makeObjects(this.world);
   }
+  /** The world this robot is in: its scene's, or its own. */
+  get world(): World | undefined { return this.sceneWorld ?? this.spec?.world; }
+  /** What wheels bump into and sensors see: fixed obstacles, blocks where they are now, other robots. */
+  private senseWorld(): World | undefined {
+    const w = this.world; if (!w) return w;
+    if (!this.objects.length && !this.others.length) return w;
+    const blocks = this.objects.map(o => { const p = new THREE.Vector3().setFromMatrixPosition(o.m); return { shape: o.shape, pos: [p.x, p.z] as [number, number], size: [o.size.x, p.y + o.size.y / 2, o.size.z] as [number, number, number] }; });
+    return { ...w, obstacles: [...w.obstacles.filter(o => !o.pick), ...blocks, ...this.others] };
+  }
+  /** Rough radius of the robot's footprint (mm), for bumping into other robots. */
+  radius() { return this.footprint(); }
   /** World pose of each pickable block, by obstacle index (for drawing). */
   objectPoses() { return new Map(this.objects.map(o => [o.index, o.m])); }
   /** Is a gripper holding something? */
   get holding() { return this.objects.some(o => o.held); }
   reset() {
-    this.q.clear(); this.manual.clear(); this.wheelDeg.clear(); this.body.reset(); this.legs.reset(); this.stalled = false;
+    this.q.clear(); this.manual.clear(); this.wheelDeg.clear(); this.body.reset(); this.body.m.copy(this.home); this.legs.reset(); this.stalled = false;
     for (const j of this.joints) { j.q = 0; j.target = 0; j.sag = 0; }
     this.syncObjects(true);
     this.cmd.clear();
@@ -176,7 +192,7 @@ export class RobotSim {
         // spin the wheels to match (ground speed at each wheel / radius)
         for (const wh of wheelsOf(this.model.parts)) { const js = this.joints.find(j => j.id === wh.id); if (js) { const q = (this.q.get(wh.id) ?? 0) + ((v - w * wh.x) / wh.radius) * (180 / Math.PI) * dt * Math.sign(wh.axis.x || 1); this.q.set(wh.id, q); js.q = q; this.wheelDeg.set(wh.id, q); } }
       }
-      this.stalled = !driveBody(this.body, v, w, dt, this.footprint(), spec.world) && Math.abs(v) > 1;
+      this.stalled = !driveBody(this.body, v, w, dt, this.footprint(), this.senseWorld()) && Math.abs(v) > 1;
       this.solve();
     } else if (spec?.mobile === 'legs') {
       this.legs.step(this.body, this.feet(), this.com(), dt);
@@ -199,7 +215,7 @@ export class RobotSim {
       const qa = this.q.get(g.a.id) ?? 0, qb = this.q.get(g.b.id) ?? 0;
       let pressing: WorldObject | null = null;
       for (const o of this.objects) {
-        if (o.held && o.held.by !== key) continue;
+        if (o.held && (o.held.by !== key || (o.held.sim ?? this) !== this)) continue;
         const rest = o.held ? o.held.rel.clone() : inv.clone().multiply(o.m), c = new THREE.Vector3().setFromMatrixPosition(rest), oq = new THREE.Quaternion().setFromRotationMatrix(rest);
         const pen = (qa: number, qb: number) => {
           const ca = at(g.a, qa), cb = at(g.b, qb), dist = ca.distanceTo(cb); if (dist < 1e-6) return null;
@@ -223,47 +239,23 @@ export class RobotSim {
         if (now.a > 0 && now.ua > 1e-3) na = Math.max(g.a.joint!.min ?? -Infinity, qa - now.a / now.ua);
         if (now.b > 0 && now.ub > 1e-3) nb = Math.max(g.b.joint!.min ?? -Infinity, qb - now.b / now.ub);
         for (const [f, q] of [[g.a, na], [g.b, nb]] as const) { this.q.set(f.id, q); const js = this.joints.find(j => j.id === f.id); if (js) js.q = q; }
-        if (now.a > -0.05 && now.b > -0.05) { pressing = o; if (!o.held) { o.held = { by: key, rel: rest }; o.vy = 0; } }
+        if (now.a > -0.05 && now.b > -0.05) { pressing = o; if (!o.held) { o.held = { by: key, rel: rest, sim: this }; o.vy = 0; } }
         else if (o.held) this.release(o);
         break;
       }
-      for (const o of this.objects) if (o.held?.by === key && o !== pressing) this.release(o);
+      for (const o of this.objects) if (o.held?.by === key && (o.held.sim ?? this) === this && o !== pressing) this.release(o);
     }
   }
   /** Let go: the block keeps its place and heading, stands upright, and falls. */
-  private release(o: WorldObject) {
-    o.held = undefined;
-    const p = new THREE.Vector3().setFromMatrixPosition(o.m), x = new THREE.Vector3(1, 0, 0).transformDirection(o.m);
-    o.m.compose(p, new THREE.Quaternion().setFromAxisAngle(UP, Math.atan2(-x.z, x.x)), ONE);
-    o.vy = 0;
-  }
-  /** Held blocks follow the hand; loose ones fall to the floor or onto what is under them. */
+  private release(o: WorldObject) { releaseObject(o); }
+  /** Held blocks follow the hand; loose ones fall to the floor or onto what is under them (the scene does that for shared blocks). */
   private carry(dt: number) {
     for (const o of this.objects) {
-      if (o.held) { const hand = this.pose.get(this.grippers.find(g => g.a.id === o.held!.by)?.parent ?? ''); if (hand) o.m.copy(hand.clone().multiply(o.held.rel)); else this.release(o); continue; }
-      const p = new THREE.Vector3().setFromMatrixPosition(o.m), rest = this.support(o, p.x, p.z) + o.size.y / 2;
-      if (p.y <= rest + 1e-3) { p.y = rest; o.vy = 0; }
-      else { o.vy += 9810 * dt; p.y = Math.max(rest, p.y - o.vy * dt); if (p.y === rest) o.vy = 0; }
-      o.m.setPosition(p);
+      if (!o.held || (o.held.sim ?? this) !== this) continue;
+      const hand = this.pose.get(this.grippers.find(g => g.a.id === o.held!.by)?.parent ?? '');
+      if (hand) o.m.copy(hand.clone().multiply(o.held.rel)); else this.release(o);
     }
-  }
-  /** Height of the top surface under (x, z): the floor, a fixed obstacle, or another block. */
-  private support(self: WorldObject, x: number, z: number) {
-    let top = 0;
-    for (const ob of this.spec?.world?.obstacles ?? []) {
-      if (ob.pick) continue;
-      const dx = x - ob.pos[0], dz = z - ob.pos[1], a = -(ob.rot ?? 0) * D2R, lx = dx * Math.cos(a) + dz * Math.sin(a), lz = -dx * Math.sin(a) + dz * Math.cos(a);
-      const inside = ob.shape === 'cyl' ? Math.hypot(dx, dz) <= ob.size[0] / 2 : Math.abs(lx) <= ob.size[0] / 2 && Math.abs(lz) <= ob.size[2] / 2;
-      if (inside) top = Math.max(top, ob.size[1]);
-    }
-    const me = new THREE.Vector3().setFromMatrixPosition(self.m);
-    for (const o of this.objects) {
-      if (o === self || o.held) continue;
-      const p = new THREE.Vector3().setFromMatrixPosition(o.m);
-      if (p.y + o.size.y / 2 > me.y - self.size.y / 2 + 1) continue; // beside or above, not below
-      if (Math.hypot(x - p.x, z - p.z) <= Math.max(o.size.x, o.size.z) / 2) top = Math.max(top, p.y + o.size.y / 2);
-    }
-    return top;
+    if (!this.sharedObjects) dropObjects(this.objects, this.world, dt);
   }
 
   private stepPhysics(dt: number, comps: CompInstance[], bench: BenchLike, running: boolean) {
@@ -362,7 +354,7 @@ export class RobotSim {
   /** Sensors that are parts of the model read the world. */
   private sense(comps: CompInstance[], bench: BenchLike, dt: number) {
     this.readings.clear();
-    const world = this.spec?.world;
+    const world = this.senseWorld();
     for (const c of comps) {
       const part = this.model.parts.find(p => p.comp === c.uid && p.kind === 'internal') ?? this.model.parts.find(p => p.comp === c.uid);
       const m = bench.model(c.uid); if (!m) continue;
@@ -394,6 +386,48 @@ export class RobotSim {
     }
     void dt;
   }
+}
+/** The pickable blocks a world starts with (obstacles with pick: true), by obstacle index. */
+export function makeObjects(world: World | undefined): WorldObject[] {
+  return (world?.obstacles ?? []).flatMap((o, index) => {
+    if (!o.pick) return [];
+    const m = new THREE.Matrix4().compose(new THREE.Vector3(o.pos[0], o.size[1] / 2, o.pos[1]), new THREE.Quaternion().setFromAxisAngle(UP, (o.rot ?? 0) * D2R), ONE);
+    return [{ index, shape: o.shape, size: new THREE.Vector3(...o.size), m, vy: 0 }];
+  });
+}
+/** Let go of a block: it keeps its place and heading, stands upright, and falls. */
+export function releaseObject(o: WorldObject) {
+  o.held = undefined;
+  const p = new THREE.Vector3().setFromMatrixPosition(o.m), x = new THREE.Vector3(1, 0, 0).transformDirection(o.m);
+  o.m.compose(p, new THREE.Quaternion().setFromAxisAngle(UP, Math.atan2(-x.z, x.x)), ONE);
+  o.vy = 0;
+}
+/** Loose blocks fall to the floor, or onto a fixed obstacle or another block under them. */
+export function dropObjects(objects: WorldObject[], world: World | undefined, dt: number) {
+  for (const o of objects) {
+    if (o.held) continue;
+    const p = new THREE.Vector3().setFromMatrixPosition(o.m), rest = supportUnder(objects, world, o, p.x, p.z) + o.size.y / 2;
+    if (p.y <= rest + 1e-3) { p.y = rest; o.vy = 0; }
+    else { o.vy += 9810 * dt; p.y = Math.max(rest, p.y - o.vy * dt); if (p.y === rest) o.vy = 0; }
+    o.m.setPosition(p);
+  }
+}
+function supportUnder(objects: WorldObject[], world: World | undefined, self: WorldObject, x: number, z: number) {
+  let top = 0;
+  for (const ob of world?.obstacles ?? []) {
+    if (ob.pick) continue;
+    const dx = x - ob.pos[0], dz = z - ob.pos[1], a = -(ob.rot ?? 0) * D2R, lx = dx * Math.cos(a) + dz * Math.sin(a), lz = -dx * Math.sin(a) + dz * Math.cos(a);
+    const inside = ob.shape === 'cyl' ? Math.hypot(dx, dz) <= ob.size[0] / 2 : Math.abs(lx) <= ob.size[0] / 2 && Math.abs(lz) <= ob.size[2] / 2;
+    if (inside) top = Math.max(top, ob.size[1]);
+  }
+  const me = new THREE.Vector3().setFromMatrixPosition(self.m);
+  for (const o of objects) {
+    if (o === self || o.held) continue;
+    const p = new THREE.Vector3().setFromMatrixPosition(o.m);
+    if (p.y + o.size.y / 2 > me.y - self.size.y / 2 + 1) continue; // beside or above, not below
+    if (Math.hypot(x - p.x, z - p.z) <= Math.max(o.size.x, o.size.z) / 2) top = Math.max(top, p.y + o.size.y / 2);
+  }
+  return top;
 }
 const D2R = Math.PI / 180, UP = new THREE.Vector3(0, 1, 0), ONE = new THREE.Vector3(1, 1, 1);
 const restQuat = (p: BuiltPart) => new THREE.Quaternion().setFromEuler(new THREE.Euler(p.rot[0] * D2R, p.rot[1] * D2R, p.rot[2] * D2R));

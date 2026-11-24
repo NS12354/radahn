@@ -89,6 +89,36 @@ function frontPanel(p: BuiltPart): THREE.BufferGeometry {
 
 const tmpM = new THREE.Matrix4(), tmpS = new THREE.Vector3(), ONE = new THREE.Vector3(1, 1, 1);
 
+/**
+ * Draw a robot world into a group (mm): floor and grid, walls, the line track, obstacles.
+ * Pickable blocks' meshes go into `picks` by obstacle index, so they can be moved.
+ */
+export function drawWorld(w: World, g: THREE.Group, picks: Map<number, THREE.Mesh>) {
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(w.size, w.size), new THREE.MeshPhysicalMaterial({ color: 0x9d9a94, roughness: 0.85, clearcoat: 0.05 }));
+  floor.rotation.x = -Math.PI / 2; floor.position.y = -0.2; floor.receiveShadow = true;
+  g.add(floor);
+  const grid = new THREE.GridHelper(w.size, Math.round(w.size / 100), 0xb5b1a8, 0xc7c3ba); grid.position.y = -0.1; g.add(grid);
+  const s = w.size / 2, wallM = new THREE.MeshStandardMaterial({ color: 0xbdb7ab, roughness: 0.9 });
+  for (const [x, z, ww, dd] of [[0, -s - 5, w.size + 20, 10], [0, s + 5, w.size + 20, 10], [-s - 5, 0, 10, w.size], [s + 5, 0, 10, w.size]]) { const m = new THREE.Mesh(new THREE.BoxGeometry(ww, 60, dd), wallM); m.position.set(x, 30, z); g.add(m); }
+  if (w.track && w.track.points.length > 1) {
+    const lm = new THREE.MeshBasicMaterial({ color: 0x15161a });
+    const pts = w.track.points;
+    for (let i = 0; i < pts.length; i++) {
+      const [ax, az] = pts[i], [bx, bz] = pts[(i + 1) % pts.length], len = Math.hypot(bx - ax, bz - az);
+      const seg = new THREE.Mesh(new THREE.PlaneGeometry(len + w.track.width, w.track.width), lm);
+      seg.rotation.x = -Math.PI / 2; seg.rotation.z = -Math.atan2(bz - az, bx - ax); seg.position.set((ax + bx) / 2, 0, (az + bz) / 2);
+      g.add(seg);
+    }
+  }
+  w.obstacles.forEach((o, i) => {
+    const m = new THREE.Mesh(o.shape === 'cyl' ? new THREE.CylinderGeometry(o.size[0] / 2, o.size[0] / 2, o.size[1], 32) : new THREE.BoxGeometry(o.size[0], o.size[1], o.size[2]), new THREE.MeshStandardMaterial({ color: new THREE.Color(o.color ?? '#c8743a'), roughness: 0.7 }));
+    m.position.set(o.pos[0], o.size[1] / 2, o.pos[1]); m.rotation.y = (o.rot ?? 0) * Math.PI / 180; m.castShadow = true;
+    if (o.pick) picks.set(i, m);
+    g.add(m);
+  });
+  g.traverse((o: any) => { o.userData.world = true; if (o.isMesh) { o.receiveShadow = true; o.castShadow = !(o.geometry instanceof THREE.PlaneGeometry); } });
+}
+
 export class BuiltProduct extends Product {
   /** Millimetre space: everything the modeler edits lives in here. */
   mm = new THREE.Group();
@@ -134,29 +164,7 @@ export class BuiltProduct extends Product {
     this.worldG.clear();
     this.pickMeshes.clear();
     if (!w) { this.mm.remove(this.worldG); return; }
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(w.size, w.size), new THREE.MeshPhysicalMaterial({ color: 0x9d9a94, roughness: 0.85, clearcoat: 0.05 }));
-    floor.rotation.x = -Math.PI / 2; floor.position.y = -0.2; floor.receiveShadow = true;
-    this.worldG.add(floor);
-    const grid = new THREE.GridHelper(w.size, Math.round(w.size / 100), 0xb5b1a8, 0xc7c3ba); grid.position.y = -0.1; this.worldG.add(grid);
-    const s = w.size / 2, wallM = new THREE.MeshStandardMaterial({ color: 0xbdb7ab, roughness: 0.9 });
-    for (const [x, z, ww, dd] of [[0, -s - 5, w.size + 20, 10], [0, s + 5, w.size + 20, 10], [-s - 5, 0, 10, w.size], [s + 5, 0, 10, w.size]]) { const m = new THREE.Mesh(new THREE.BoxGeometry(ww, 60, dd), wallM); m.position.set(x, 30, z); this.worldG.add(m); }
-    if (w.track && w.track.points.length > 1) {
-      const lm = new THREE.MeshBasicMaterial({ color: 0x15161a });
-      const pts = w.track.points;
-      for (let i = 0; i < pts.length; i++) {
-        const [ax, az] = pts[i], [bx, bz] = pts[(i + 1) % pts.length], len = Math.hypot(bx - ax, bz - az);
-        const seg = new THREE.Mesh(new THREE.PlaneGeometry(len + w.track.width, w.track.width), lm);
-        seg.rotation.x = -Math.PI / 2; seg.rotation.z = -Math.atan2(bz - az, bx - ax); seg.position.set((ax + bx) / 2, 0, (az + bz) / 2);
-        this.worldG.add(seg);
-      }
-    }
-    w.obstacles.forEach((o, i) => {
-      const m = new THREE.Mesh(o.shape === 'cyl' ? new THREE.CylinderGeometry(o.size[0] / 2, o.size[0] / 2, o.size[1], 32) : new THREE.BoxGeometry(o.size[0], o.size[1], o.size[2]), new THREE.MeshStandardMaterial({ color: new THREE.Color(o.color ?? '#c8743a'), roughness: 0.7 }));
-      m.position.set(o.pos[0], o.size[1] / 2, o.pos[1]); m.rotation.y = (o.rot ?? 0) * Math.PI / 180; m.castShadow = true;
-      if (o.pick) this.pickMeshes.set(i, m);
-      this.worldG.add(m);
-    });
-    this.worldG.traverse((o: any) => { o.userData.world = true; if (o.isMesh) { o.receiveShadow = true; o.castShadow = !(o.geometry instanceof THREE.PlaneGeometry); } });
+    drawWorld(w, this.worldG, this.pickMeshes);
     this.mm.add(this.worldG);
   }
 

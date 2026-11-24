@@ -206,11 +206,46 @@
     </div>
     <h2>Robots</h2>
     <div class="starts robots" id="hRobots"></div>
+    <h2>Scenes <span>several robots in one world, simulated together</span></h2>
+    <div id="sceneGrid"></div>
     <div class="hrow"><h2>Your projects <span id="homeCount"></span></h2><input type="text" id="homeSearch" placeholder="Search projects" spellcheck="false"></div>
     <div class="note" id="homeWarn" style="display:none">This browser is blocking storage, so projects only last until you close the tab. Download them from the Project menu to keep them.</div>
     <div id="homeGrid"></div>
   </div>
 </div>
+
+<section id="sceneWs" aria-label="Scene">
+  <header class="swtop">
+    <button class="logo" id="swHome" title="All projects and scenes"><i></i>Formframe</button>
+    <span class="swkind">Scene</span>
+    <input type="text" id="swName" aria-label="Scene name" spellcheck="false">
+    <label class="swworld">World <select id="swWorld"></select></label>
+    <div class="swrun">
+      <button class="btn primary" id="swRunAll" title="Start every robot's firmware">▶ Run all</button>
+      <button class="btn" id="swStopAll">■ Stop all</button>
+      <button class="btn" id="swReset" title="Robots back to their spots, blocks back where they started">↺ Reset</button>
+    </div>
+  </header>
+  <div class="swbody">
+    <aside id="swSide">
+      <div class="sec">
+        <h3>Robots <span id="swCount"></span></h3>
+        <div id="swList"></div>
+        <div class="swadd"><button class="btn" id="swAdd">+ Add robot</button><div id="swMenu" class="swmenu" hidden></div></div>
+      </div>
+      <div class="sec">
+        <h3>In the world</h3>
+        <div id="swObjs"></div>
+        <button class="btn" id="swBlock" title="Select an arm first to put the block within its reach">+ Block</button>
+      </div>
+    </aside>
+    <div id="swView"><div id="swTags"></div><div class="swhint">Drag a robot to move it · Shift-drag to turn it</div></div>
+    <section id="swCon" aria-label="Serial output">
+      <div class="swch"><div id="swTabs"></div><button class="btn" id="swClear">Clear</button></div>
+      <div id="swLog"></div>
+    </section>
+  </div>
+</section>
 
 <section id="ghView" aria-label="GitHub">
   <div class="ghcol ghleft" id="ghLeft"></div>
