@@ -281,3 +281,44 @@ export class Stepper {
   }
   get angle() { return ((this.steps / this.perRev) * 360) % 360; }
 }
+
+// ------------------------------------------------------------------ PCA9685 16-channel PWM / servo driver
+/** Registers: MODE1 0x00, LEDn_ON_L 0x06+4n (ON_L, ON_H, OFF_L, OFF_H), ALL_LED 0xFA, PRE_SCALE 0xFE. Auto-increment via MODE1 bit 5. */
+export class PCA9685 implements I2CTarget {
+  readonly regs = new Uint8Array(256);
+  private ptr = 0; private first = true; writes = 0;
+  constructor(public address = 0x40) { this.reset(); }
+  reset() { this.regs.fill(0); this.regs[0x00] = 0x11; this.regs[0xfe] = 0x1e; for (let n = 0; n < 16; n++) this.regs[0x06 + 4 * n + 3] = 0x10; }
+  start(read: boolean) { if (!read) this.first = true; }
+  write(b: number) {
+    if (this.first) { this.ptr = b; this.first = false; return true; }
+    const r = this.ptr;
+    if (r === 0xfe && !(this.regs[0] & 0x10)) { /* prescale only writable while asleep */ } else this.regs[r] = b;
+    if (r >= 0xfa && r <= 0xfd) for (let n = 0; n < 16; n++) this.regs[0x06 + 4 * n + (r - 0xfa)] = b;
+    this.writes++;
+    this.ptr = this.regs[0] & 0x20 ? (r + 1) & 255 : r;
+    return true;
+  }
+  read() { const v = this.regs[this.ptr]; if (this.regs[0] & 0x20) this.ptr = (this.ptr + 1) & 255; return v; }
+  get asleep() { return !!(this.regs[0] & 0x10); }
+  /** PWM frequency from the prescaler (25 MHz internal oscillator). */
+  get freq() { return 25e6 / (4096 * (this.regs[0xfe] + 1)); }
+  /** Pulse width of a channel in microseconds (0 when off or asleep). */
+  pulseUs(n: number) {
+    if (this.asleep) return 0;
+    const b = 0x06 + 4 * n, on = this.regs[b] | ((this.regs[b + 1] & 0x0f) << 8), off = this.regs[b + 2] | ((this.regs[b + 3] & 0x0f) << 8);
+    if (this.regs[b + 3] & 0x10) return 0;           // full off
+    if (this.regs[b + 1] & 0x10) return 1e6 / this.freq; // full on
+    return (((off - on + 4096) % 4096) / 4096) * (1e6 / this.freq);
+  }
+}
+
+/** 20-slot optical wheel encoder: one output edge every 9° of wheel rotation. */
+export class SlotEncoder {
+  edges = 0; private last = 0;
+  constructor(public slots = 20) {}
+  /** Feed the wheel's angle (degrees, unwrapped). Returns the edges crossed since the last call. */
+  turn(deg: number) { const k = Math.floor(deg / (180 / this.slots)); const n = Math.abs(k - this.last); this.last = k; this.edges += n; return n; }
+  get level(): Level { return (((this.last % 2) + 2) % 2) as Level; }
+  reset() { this.edges = 0; this.last = 0; }
+}

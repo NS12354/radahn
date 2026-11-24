@@ -142,7 +142,9 @@ export interface ComponentDef {
   cost: number;
   i2cAddress?: number;
   ui: 'led' | 'button' | 'encoder' | 'pot' | 'sensor' | 'ring' | 'screen' | 'buzzer' | 'servo' | 'relay' | 'haptic'
-    | 'toggle' | 'meter' | 'joystick' | 'rgb' | 'motor' | 'stepper' | 'distance' | 'imu' | 'display';
+    | 'toggle' | 'meter' | 'joystick' | 'rgb' | 'motor' | 'stepper' | 'distance' | 'imu' | 'display' | 'servos';
+  /** Extra bill-of-materials lines (e.g. the servos plugged into a servo driver). */
+  bom?(c: CompInstance): [string, number][];
   /** Library section (defaults from category). */
   group?: string;
   /** LED colour, for indicator LEDs. */

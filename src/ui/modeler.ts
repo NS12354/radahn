@@ -3,7 +3,7 @@ import { TransformControls } from 'three/examples/jsm/controls/TransformControls
 import type { App } from './app';
 import { $, $$, el, esc, opts, toast } from './dom';
 import { BuiltProduct } from '../scene/built';
-import { newUid, defaultAutoOpts, type BindRole, type BuiltModel, type BuiltPart, type ShapeKind } from '../app/project';
+import { newUid, defaultAutoOpts, type BindRole, type BuiltModel, type BuiltPart, type ShapeKind, type Joint, type JointType } from '../app/project';
 import { autoBuild, mergeRebuild } from '../app/autobuild';
 import { screenPart, displayComps } from '../app/screenpart';
 import { bounds, fitBuilt } from '../app/fit';
@@ -104,8 +104,18 @@ const D2R = Math.PI / 180, r1 = (v: number) => Math.round(v * 10) / 10;
 /** During a drag, write the root's transform into the part and the inspector fields. */
 function liveWrite(root: THREE.Object3D) {
   const p = (root.userData as any).part as BuiltPart;
-  p.pos = [root.position.x, root.position.y, root.position.z].map(r1) as any;
-  p.rot = [root.rotation.x, root.rotation.y, root.rotation.z].map(v => r1(v / D2R)) as any;
+  const rest = prod().restTransform(root), e = new THREE.Euler().setFromQuaternion(rest.quat, 'XYZ');
+  const before = [...p.pos];
+  p.pos = [rest.pos.x, rest.pos.y, rest.pos.z].map(r1) as any;
+  p.rot = [e.x, e.y, e.z].map(v => r1(v / D2R)) as any;
+  // a robot part carries its joint and everything attached to it
+  const d = p.pos.map((v, k) => v - before[k]);
+  if (d.some(v => v)) {
+    if (p.joint) p.joint.pivot = p.joint.pivot.map((v, k) => r1(v + d[k])) as any;
+    const kids = new Set([p.id]); let grew = true;
+    while (grew) { grew = false; for (const q of model().parts) if (q.parent && kids.has(q.parent) && !kids.has(q.id)) { kids.add(q.id); grew = true; q.pos = q.pos.map((v, k) => r1(v + d[k])) as any; if (q.joint) q.joint.pivot = q.joint.pivot.map((v, k) => r1(v + d[k])) as any; } }
+    if (kids.size > 1) moved = true;
+  }
   const sz = [0, 1, 2].map(k => r1(p.size[k] * (root.scale as any).getComponent(k)));
   setFields(p, sz as any);
 }
@@ -117,8 +127,10 @@ function bake(root: THREE.Object3D) {
     if (p.shape === 'tube' && p.param) p.param = r1(p.param * root.scale.x);
     root.scale.set(1, 1, 1);
   }
+  moved = false;
   rebuild();
 }
+let moved = false;
 
 function rebuild() {
   prod().build();
@@ -262,6 +274,7 @@ function renderInspector(app: App) {
     <div class="row"><label>Repeat</label><input type="number" id="bArrN" value="${a?.n ?? 1}" min="1" max="500" step="1" style="width:58px"><select id="bArrMode" style="flex:1"><option value="linear" ${a?.mode !== 'radial' ? 'selected' : ''}>in a line</option><option value="radial" ${a?.mode === 'radial' ? 'selected' : ''}>around a centre</option></select></div>
     ${a && a.n > 1 ? a.mode === 'radial' ? `<div class="row tri"><label>Centre</label>${num('bac0', a.center?.[0] ?? 0)}${num('bac1', a.center?.[1] ?? 0)}<span></span></div>` : tri('Step mm', 'bas', a.step ?? [10, 0, 0]) : ''}
     <div class="row"><label>Explode</label><input type="number" id="bLayer" value="${p.layer ?? 0}" step="1" style="flex:1" title="Exploded view moves the part this many steps along Z"></div>
+    ${jointHTML(app, p)}
     ${p.auto ? `<label class="keep"><input type="checkbox" id="bKeep"> Keep this part when I rebuild <span>(auto-built parts are replaced)</span></label>` : ''}
     <div class="row" style="margin-top:10px"><button class="btn" id="bDup" style="flex:1">Duplicate</button><button class="btn" id="bMirror" style="flex:1" title="Copy mirrored across X = 0">Mirror X</button><button class="btn" id="bDel" style="flex:1">Delete</button></div>`;
   syncGizmoButtons();
@@ -287,6 +300,7 @@ function renderInspector(app: App) {
   if (a && a.n > 1 && a.mode !== 'radial') for (let k = 0; k < 3; k++) $('#bas' + k).oninput = upd(() => { p.array!.step = [v('bas0'), v('bas1'), v('bas2')]; });
   $('#bLayer').oninput = upd(() => { p.layer = Math.round(v('bLayer')); });
   if (p.auto) ($('#bKeep') as HTMLInputElement).onchange = e => { p.auto = !(e.target as HTMLInputElement).checked; app.changed('product'); };
+  wireJoint(app, p, upd);
   $('#bDup').onclick = () => duplicate(p);
   $('#bDel').onclick = () => removePart(p);
   $('#bMirror').onclick = () => {
@@ -305,4 +319,74 @@ function refreshSide(_app: App) {
   const fit = fitBuilt(m.parts), bad = fit.filter(f => f.level !== 'ok').length;
   $('#mFitBadge').innerHTML = !fit.length ? '' : bad ? `<span class="badge bad">${bad} issue${bad > 1 ? 's' : ''}</span>` : '<span class="badge ok">Fits</span>';
   $('#mFitList').innerHTML = fit.map(f => `<div class="chk ${f.level}"><i></i><span>${esc(f.msg)}</span></div>`).join('') || '<div class="empty">Mark parts as Internal to check they fit inside the shell.</div>';
+}
+
+// ------------------------------------------------------------------ robot joints
+const AXES: Record<string, [number, number, number]> = { '+X': [1, 0, 0], '-X': [-1, 0, 0], '+Y': [0, 1, 0], '-Y': [0, -1, 0], '+Z': [0, 0, 1], '-Z': [0, 0, -1] };
+const axisKey = (a: [number, number, number]) => Object.entries(AXES).find(([, v]) => v.every((x, i) => Math.abs(x - a[i]) < 1e-6))?.[0] ?? 'custom';
+/** What can drive a joint: "uid" or "uid:channel". */
+function driverOptions(app: App, sel?: string) {
+  const out: [string, string][] = [['', 'Nothing (teach slider)']];
+  for (const c of app.project.electronics.comps) {
+    const d = COMPONENTS[c.type]; if (!d) continue;
+    if (c.type === 'pca9685') for (let ch = 0; ch < 16; ch++) out.push([`${c.uid}:${ch}`, `${d.name.split(' (')[0]} @0x${(c.props?.address ?? 0x40).toString(16)} ch ${ch}`]);
+    else if (c.type === 'tb6612' || c.type === 'l298n') { out.push([`${c.uid}:0`, `${d.name} motor A`]); out.push([`${c.uid}:1`, `${d.name} motor B`]); }
+    else if (['servo', 'mg996r', 'stepper', 'motor', 'fan', 'pump', 'contservo'].includes(c.type)) out.push([c.uid, d.name]);
+  }
+  return out.map(([v, l]) => `<option value="${v}" ${v === sel ? 'selected' : ''}>${esc(l)}</option>`).join('');
+}
+function descendants(parts: BuiltPart[], id: string) {
+  const out = new Set<string>([id]); let grew = true;
+  while (grew) { grew = false; for (const p of parts) if (p.parent && out.has(p.parent) && !out.has(p.id)) { out.add(p.id); grew = true; } }
+  return out;
+}
+function jointHTML(app: App, p: BuiltPart) {
+  const parts = model().parts, own = descendants(parts, p.id), j = p.joint;
+  const kind = j ? j.type : p.parent ? 'attached' : 'none';
+  const dsel = j?.drive ? (j.drive.channel != null ? `${j.drive.comp}:${j.drive.channel}` : j.drive.comp) : '';
+  return `<div class="jsec"><div class="jh">Robot joint <span>${p.parent || j ? '' : 'makes this part move'}</span></div>
+    <div class="row"><label>Attached to</label><select id="bjParent" style="flex:1"><option value="">Nothing (the base)</option>${parts.filter(x => !own.has(x.id)).map(x => `<option value="${x.id}" ${x.id === p.parent ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></div>
+    <div class="row"><label>Moves</label><select id="bjType" style="flex:1">${[['none', 'Doesn\'t move'], ['attached', 'With its parent only'], ['revolute', 'Rotates (servo joint)'], ['prismatic', 'Slides (gripper, linear)'], ['wheel', 'Spins (wheel)']].map(([k, l]) => `<option value="${k}" ${k === kind ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+    ${j && j.type !== 'fixed' ? `
+    <div class="row"><label>Axis</label><select id="bjAxis" style="flex:1">${Object.keys(AXES).map(k => `<option ${k === axisKey(j.axis) ? 'selected' : ''}>${k}</option>`).join('')}${axisKey(j.axis) === 'custom' ? '<option selected>custom</option>' : ''}</select></div>
+    <div class="row tri"><label>Pivot</label>${j.pivot.map((v, k) => `<input type="number" id="bjp${k}" value="${Math.round(v * 100) / 100}" step="0.5">`).join('')}</div>
+    <div class="row"><label></label><button class="btn" id="bjPivC" style="flex:1" title="Pivot at the part's centre">Centre</button><button class="btn" id="bjPivB" style="flex:1" title="Pivot at the part's bottom end (−Y), like a limb's joint">Bottom</button><button class="btn" id="bjPivT" style="flex:1" title="Pivot at the part's top end (+Y)">Top</button></div>
+    ${j.type !== 'wheel' ? `<div class="row tri"><label>Limits ${j.type === 'prismatic' ? 'mm' : '°'}</label><input type="number" id="bjMin" value="${j.min ?? -90}" step="1"><input type="number" id="bjMax" value="${j.max ?? 90}" step="1"><span></span></div>` : ''}
+    <div class="row"><label>Driven by</label><select id="bjDrive" style="flex:1">${driverOptions(app, dsel)}</select></div>
+    <label class="keep"><input type="checkbox" id="bjInv" ${j.drive?.invert ? 'checked' : ''}> Reverse direction</label>` : ''}
+    <label class="keep"><input type="checkbox" id="bjFoot" ${p.foot ? 'checked' : ''}> Foot (walking robots stand on it)</label>
+  </div>`;
+}
+function wireJoint(app: App, p: BuiltPart, upd: (fn: () => void, full?: boolean) => () => void) {
+  const ensureRobot = () => { const m = model(); if (!m.robot && (p.joint || p.foot)) m.robot = { kind: 'custom', mobile: p.foot ? 'legs' : p.joint?.type === 'wheel' ? 'wheels' : 'fixed', mass: 500 }; };
+  $('#bjParent').onchange = upd(() => { p.parent = ($('#bjParent') as HTMLSelectElement).value || undefined; }, true);
+  $('#bjType').onchange = upd(() => {
+    const t = ($('#bjType') as HTMLSelectElement).value;
+    if (t === 'none') { p.joint = undefined; p.parent = undefined; }
+    else if (t === 'attached') p.joint = undefined;
+    else {
+      const base: Joint = p.joint ?? { type: 'revolute', pivot: [p.pos[0], p.pos[1] - p.size[1] / 2, p.pos[2]], axis: t === 'wheel' ? [1, 0, 0] : t === 'prismatic' ? [1, 0, 0] : [1, 0, 0], min: t === 'prismatic' ? 0 : -90, max: t === 'prismatic' ? 10 : 90 };
+      p.joint = { ...base, type: t as JointType };
+      if (t === 'wheel') p.joint.pivot = [...p.pos];
+      if (!p.parent) { const below = model().parts.filter(x => x.id !== p.id && !descendants(model().parts, p.id).has(x.id)).sort((a, b) => Math.hypot(...a.pos.map((v, i) => v - p.joint!.pivot[i]) as [number, number, number]) - Math.hypot(...b.pos.map((v, i) => v - p.joint!.pivot[i]) as [number, number, number]))[0]; if (below) p.parent = below.id; }
+      ensureRobot();
+    }
+  }, true);
+  ($('#bjFoot') as HTMLInputElement).onchange = upd(() => { p.foot = ($('#bjFoot') as HTMLInputElement).checked || undefined; ensureRobot(); if (p.foot) model().robot!.mobile = 'legs'; }, true);
+  const j = p.joint; if (!j || j.type === 'fixed') return;
+  $('#bjAxis').onchange = upd(() => { const k = ($('#bjAxis') as HTMLSelectElement).value; if (AXES[k]) j.axis = [...AXES[k]]; });
+  for (let k = 0; k < 3; k++) $('#bjp' + k).oninput = upd(() => { j.pivot[k] = +($('#bjp' + k) as HTMLInputElement).value; });
+  const piv = (dy: number) => upd(() => { j.pivot = [p.pos[0], p.pos[1] + dy * p.size[1] / 2, p.pos[2]]; }, true);
+  $('#bjPivC').onclick = piv(0); $('#bjPivB').onclick = piv(-1); $('#bjPivT').onclick = piv(1);
+  if (j.type !== 'wheel') { $('#bjMin').oninput = upd(() => { j.min = +($('#bjMin') as HTMLInputElement).value; }); $('#bjMax').oninput = upd(() => { j.max = +($('#bjMax') as HTMLInputElement).value; }); }
+  $('#bjDrive').onchange = upd(() => {
+    const v = ($('#bjDrive') as HTMLSelectElement).value;
+    if (!v) { j.drive = undefined; return; }
+    const [comp, ch] = v.split(':');
+    j.drive = { comp, ...(ch != null ? { channel: +ch } : {}), invert: j.drive?.invert };
+    // a servo plugged into a PCA9685 channel: record it for the power check and BOM
+    const c = app.project.electronics.comps.find(x => x.uid === comp);
+    if (c?.type === 'pca9685' && ch != null) { const list: { ch: number; type: string }[] = (c.props ??= {}).servos ??= []; if (!list.some(s => s.ch === +ch)) list.push({ ch: +ch, type: 'mg996r' }); app.changed('electronics'); }
+  }, true);
+  ($('#bjInv') as HTMLInputElement).onchange = upd(() => { if (j.drive) j.drive.invert = ($('#bjInv') as HTMLInputElement).checked; });
 }

@@ -348,6 +348,16 @@ class SMBus:
                 _hw('i2c_w', self.sda, self.scl, m.addr, m.buf)
     def write_byte(self, addr, v):
         _hw('i2c_w', self.sda, self.scl, addr, [v])
+    def write_byte_data(self, addr, reg, v):
+        _hw('i2c_w', self.sda, self.scl, addr, [reg, v])
+    def write_i2c_block_data(self, addr, reg, data):
+        _hw('i2c_w', self.sda, self.scl, addr, [reg] + list(data))
+    def read_byte_data(self, addr, reg):
+        _hw('i2c_w', self.sda, self.scl, addr, [reg])
+        return _hw('i2c_r', self.sda, self.scl, addr, 1)[0]
+    def read_i2c_block_data(self, addr, reg, n):
+        _hw('i2c_w', self.sda, self.scl, addr, [reg])
+        return list(_hw('i2c_r', self.sda, self.scl, addr, n))
     def read_byte(self, addr):
         return _hw('i2c_r', self.sda, self.scl, addr, 1)[0]
     def close(self):

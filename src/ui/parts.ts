@@ -144,7 +144,7 @@ export function renderLib() {
   for (const s of Object.values(A.project.electronics.custom ?? {})) mine.set(s.id, s);
   for (const s of libraryParts()) if (!mine.has(s.id)) mine.set(s.id, s);
   const lib = $('#libList'); lib.innerHTML = '';
-  const GROUPS: [string, string][] = [['input', 'Buttons, switches & knobs'], ['sensor', 'Sensors'], ['display', 'Displays'], ['output', 'Lights & sound'], ['actuator', 'Motors, relays & power']];
+  const GROUPS: [string, string][] = [['input', 'Buttons, switches & knobs'], ['sensor', 'Sensors'], ['display', 'Displays'], ['output', 'Lights & sound'], ['actuator', 'Motors, relays & power'], ['robotics', 'Robotics']];
   for (const [cat, title] of GROUPS) {
     const ls = builtIn.filter(l => (l.group ?? l.category) === cat);
     if (!ls.length) continue;

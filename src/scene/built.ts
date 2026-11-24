@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { Product, type Role } from './product';
 import { FINISHES } from './parametric';
-import type { BuiltModel, BuiltPart } from '../app/project';
+import type { BuiltModel, BuiltPart, World } from '../app/project';
 import { instances } from '../app/fit';
 import { partMeshGeometry } from './mesh';
 import { screenPart, type ScreenPick } from '../app/screenpart';
@@ -86,6 +86,8 @@ function frontPanel(p: BuiltPart): THREE.BufferGeometry {
   return new THREE.PlaneGeometry(w * inset, h * inset).translate(0, 0, zOff);
 }
 
+const tmpM = new THREE.Matrix4(), tmpS = new THREE.Vector3(), ONE = new THREE.Vector3(1, 1, 1);
+
 export class BuiltProduct extends Product {
   /** Millimetre space: everything the modeler edits lives in here. */
   mm = new THREE.Group();
@@ -105,6 +107,52 @@ export class BuiltProduct extends Product {
   private pivot = { c: new THREE.Vector3(), axis: new THREE.Vector3(0, 0, 1), on: false };
   /** Root the modeler is dragging: left alone by the per-frame transform pass. */
   frozen: THREE.Object3D | null = null;
+  /** Robot pose: part id → motion from rest (joints + body), or null at rest. */
+  private pose: Map<string, THREE.Matrix4> | null = null;
+  private worldG = new THREE.Group();
+  private worldKey = '';
+
+  /** A dragged root's transform back in rest space (strips the robot pose), so edits don't bake the pose in. */
+  restTransform(root: THREE.Object3D): { pos: THREE.Vector3; quat: THREE.Quaternion } {
+    const pos = root.position.clone(), quat = root.quaternion.clone();
+    const pm = this.pose?.get((root.userData as RootData).part.id);
+    if (pm) tmpM.compose(pos, quat, ONE).premultiply(pm.clone().invert()).decompose(pos, quat, tmpS);
+    return { pos, quat };
+  }
+  /** Pose the robot (joints and body). null puts every part back at rest. */
+  setPose(pose: Map<string, THREE.Matrix4> | null) { this.pose = pose; this.applyAll(); }
+
+  /** Draw the robot's surroundings (floor, obstacles, line), or remove them. */
+  setWorld(w: World | null | undefined) {
+    const key = w ? JSON.stringify(w) : '';
+    if (key === this.worldKey) return;
+    this.worldKey = key;
+    this.worldG.traverse((o: any) => { o.geometry?.dispose(); o.material?.dispose?.(); });
+    this.worldG.clear();
+    if (!w) { this.mm.remove(this.worldG); return; }
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(w.size, w.size), new THREE.MeshStandardMaterial({ color: 0xd9d6cf, roughness: 0.95 }));
+    floor.rotation.x = -Math.PI / 2; floor.position.y = -0.2; floor.receiveShadow = true;
+    this.worldG.add(floor);
+    const grid = new THREE.GridHelper(w.size, Math.round(w.size / 100), 0xb5b1a8, 0xc7c3ba); grid.position.y = -0.1; this.worldG.add(grid);
+    const s = w.size / 2, wallM = new THREE.MeshStandardMaterial({ color: 0xbdb7ab, roughness: 0.9 });
+    for (const [x, z, ww, dd] of [[0, -s - 5, w.size + 20, 10], [0, s + 5, w.size + 20, 10], [-s - 5, 0, 10, w.size], [s + 5, 0, 10, w.size]]) { const m = new THREE.Mesh(new THREE.BoxGeometry(ww, 60, dd), wallM); m.position.set(x, 30, z); this.worldG.add(m); }
+    if (w.track && w.track.points.length > 1) {
+      const lm = new THREE.MeshBasicMaterial({ color: 0x15161a });
+      const pts = w.track.points;
+      for (let i = 0; i < pts.length; i++) {
+        const [ax, az] = pts[i], [bx, bz] = pts[(i + 1) % pts.length], len = Math.hypot(bx - ax, bz - az);
+        const seg = new THREE.Mesh(new THREE.PlaneGeometry(len + w.track.width, w.track.width), lm);
+        seg.rotation.x = -Math.PI / 2; seg.rotation.z = -Math.atan2(bz - az, bx - ax); seg.position.set((ax + bx) / 2, 0, (az + bz) / 2);
+        this.worldG.add(seg);
+      }
+    }
+    for (const o of w.obstacles) {
+      const m = new THREE.Mesh(o.shape === 'cyl' ? new THREE.CylinderGeometry(o.size[0] / 2, o.size[0] / 2, o.size[1], 32) : new THREE.BoxGeometry(o.size[0], o.size[1], o.size[2]), new THREE.MeshStandardMaterial({ color: new THREE.Color(o.color ?? '#c8743a'), roughness: 0.7 }));
+      m.position.set(o.pos[0], o.size[1] / 2, o.pos[1]); m.castShadow = true;
+      this.worldG.add(m);
+    }
+    this.mm.add(this.worldG);
+  }
 
   constructor(public model: BuiltModel, private displays: string[] = []) {
     super();
@@ -212,6 +260,8 @@ export class BuiltProduct extends Product {
       if (r === this.frozen) continue;
       const d = r.userData as RootData, p = d.part;
       r.position.copy(d.base); r.quaternion.copy(d.baseQ);
+      const pm = this.pose?.get(p.id);
+      if (pm) { tmpM.compose(d.base, d.baseQ, ONE).premultiply(pm).decompose(r.position, r.quaternion, tmpS); }
       if (p.role === 'dial' && this.pivot.on && this.dialAngle) {
         v.copy(d.base).sub(this.pivot.c).applyQuaternion(q); r.position.copy(this.pivot.c).add(v);
         r.quaternion.premultiply(q);

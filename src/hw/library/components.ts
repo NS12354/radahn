@@ -4,7 +4,7 @@ import { WS2812Decoder } from '../devices/ws2812';
 import { GC9A01Decoder } from '../devices/gc9a01';
 import { SHT40 } from '../devices/sht40';
 import { audio } from '../audio';
-import { SSD1306, LCD1602, TM1637, MPU6050, AHT20, BH1750, Stepper, makeCanvas, paintInto } from '../devices/parts';
+import { SSD1306, LCD1602, TM1637, MPU6050, AHT20, BH1750, Stepper, PCA9685, SlotEncoder, makeCanvas, paintInto } from '../devices/parts';
 
 /**
  * Component library. Each entry declares its pins, power, cost, which product
@@ -474,6 +474,136 @@ export const MORE: Record<string, ComponentDef> = {
     note: '4096 half-steps per turn (64:1 gearbox). Max ~15 RPM: wait ≥ 2 ms between steps.',
   },
 };
+
+
+// ------------------------------------------------------------------ robotics
+/** Servo models: stall torque (kg·cm) and stall current (mA), for joint loads and power checks. */
+export const SERVO_TYPES: Record<string, { name: string; torque: number; stallmA: number; idlemA: number; cost: number; speed: number }> = {
+  sg90: { name: 'SG90 micro servo', torque: 1.8, stallmA: 650, idlemA: 10, cost: 1.6, speed: 600 },
+  mg90s: { name: 'MG90S metal-gear micro servo', torque: 2.2, stallmA: 700, idlemA: 10, cost: 2.5, speed: 600 },
+  mg996r: { name: 'MG996R servo', torque: 11, stallmA: 2500, idlemA: 10, cost: 4, speed: 360 },
+  ds3218: { name: 'DS3218 20 kg servo', torque: 20, stallmA: 2800, idlemA: 10, cost: 12, speed: 380 },
+};
+/** Pulse (µs) → servo angle (0–180°) for the common 500–2500 µs range; null if it's not a servo pulse. */
+export const pulseToAngle = (us: number) => (us > 300 && us < 2800 ? Math.max(0, Math.min(180, ((us - 500) / 2000) * 180)) : null);
+
+function pca9685(ctx: DeviceCtx): DeviceModel {
+  const dev = new PCA9685(ctx.comp.props?.address ?? 0x40);
+  const state = { freq: 0, ch: Array.from({ length: 16 }, () => ({ us: 0, angle: null as number | null })), asleep: true, get writes() { return dev.writes; } };
+  return {
+    state, i2c: dev, reset: () => dev.reset(),
+    frame: () => { state.asleep = dev.asleep; state.freq = Math.round(dev.freq); for (let n = 0; n < 16; n++) { const us = dev.pulseUs(n); state.ch[n].us = Math.round(us); state.ch[n].angle = state.freq > 30 && state.freq < 400 ? pulseToAngle(us) : null; } },
+  };
+}
+/** Continuous-rotation servo: 1.5 ms = stop, 1.0 / 2.0 ms = full speed either way. */
+function contServo(ctx: DeviceCtx): DeviceModel {
+  const m = servo(ctx);
+  const st = m.state as any;
+  const frame = m.frame!;
+  return { ...m, state: st, frame: dt => { frame(dt); const p = st.pulseMs; st.speed = p > 0.3 ? Math.max(-1, Math.min(1, (p - 1.5) / 0.5)) : 0; if (Math.abs(st.speed) < 0.04) st.speed = 0; st.on = st.speed !== 0; st.turns = (st.turns ?? 0) + st.speed * dt * 2; } };
+}
+/** Dual H-bridge (TB6612FNG / L298N): channel A and B speed −1..1 from the PWM/enable duty and the two direction pins. */
+function hbridge(pins: { en: [string, string]; a: [string, string]; b: [string, string] }) {
+  return (ctx: DeviceCtx): DeviceModel => {
+    const meters = new Map<string, EdgeMeter>(), simD = new Map<string, number>(), lv = new Map<string, Level>();
+    for (const r of ctx.def.roles) { meters.set(r.id, new EdgeMeter()); simD.set(r.id, -1); lv.set(r.id, 0); }
+    const state = { a: 0, b: 0, speed: 0, on: false, turns: 0 };
+    const duty = (r: string, now: number) => { const s = simD.get(r)!; return s >= 0 ? s : meters.get(r)!.duty(now); };
+    // direction pins: their level right now (code may flip them often, which mustn't read as PWM)
+    const dir = (r: string) => { const s = simD.get(r)!; return s >= 0 ? (s > 0.5 ? 1 : 0) : lv.get(r)!; };
+    const ch = (en: string, i1: string, i2: string, now: number) => { const d1 = dir(i1), d2 = dir(i2); return duty(en, now) * (d1 && !d2 ? 1 : d2 && !d1 ? -1 : 0); };
+    let a = 0, b = 0;
+    return {
+      state,
+      reset: () => { for (const r of meters.keys()) { meters.get(r)!.reset(); simD.set(r, -1); } a = b = 0; },
+      onPin: (role, l, t) => { simD.set(role, -1); lv.set(role, l); meters.get(role)?.edge(l, t); },
+      sim: { pwm: (_f: number, d: number, role?: string) => { if (role) simD.set(role, d); } },
+      frame: dt => {
+        const now = ctx.now();
+        a += (ch(pins.en[0], pins.a[0], pins.a[1], now) - a) * Math.min(1, dt * 8);
+        b += (ch(pins.en[1], pins.b[0], pins.b[1], now) - b) * Math.min(1, dt * 8);
+        state.a = Math.abs(a) < 0.01 ? 0 : a; state.b = Math.abs(b) < 0.01 ? 0 : b;
+        state.speed = (state.a + state.b) / 2; state.on = !!(state.a || state.b); state.turns += state.speed * dt * 2;
+      },
+    };
+  };
+}
+function wheelEncoder(ctx: DeviceCtx): DeviceModel {
+  const enc = new SlotEncoder(20);
+  const state = { get edges() { return enc.edges; }, deg: 0 };
+  return {
+    state, reset: () => { enc.reset(); ctx.setInput('OUT', 0); },
+    sim: {
+      /** The robot sim reports the wheel angle; edges are spread out in time so the code's interrupt sees each one. */
+      turn: (deg: number) => { state.deg = deg; const before = enc.level; const n = enc.turn(deg); let l = before; for (let i = 0; i < n; i++) { l = (1 - l) as Level; const lvl = l; ctx.schedule((i + 1) * 300e3, () => ctx.setInput('OUT', lvl)); } },
+    },
+  };
+}
+
+export const ROBOTICS: Record<string, ComponentDef> = {
+  pca9685: {
+    id: 'pca9685', name: 'PCA9685 16-ch servo driver (I2C)', category: 'actuator', group: 'robotics', ui: 'servos',
+    roles: [{ id: 'SDA', kind: 'i2c-sda' }, { id: 'SCL', kind: 'i2c-scl' }], rail: '3v3', mA: 10, cost: 3, i2cAddress: 0x40, create: pca9685,
+    note: 'I2C 0x40 (A0–A5 jumpers: up to 0x7F). 12-bit PWM on 16 channels; servos plug into its V+ header, powered separately.',
+    checks: (c, x) => servoPower(c, x),
+    bom: c => servoList(c).map(s => [`${SERVO_TYPES[s.type]?.name ?? s.type} × ${s.n}`, (SERVO_TYPES[s.type]?.cost ?? 2) * s.n] as [string, number]),
+  },
+  mg996r: {
+    id: 'mg996r', name: 'MG996R high-torque servo', category: 'actuator', group: 'robotics', ui: 'servo',
+    roles: [{ id: 'PWM', kind: 'pwm' }], rail: '5v', mA: 10, peakmA: 2500, cost: 4, create: servo,
+    note: '11 kg·cm at 6 V, stalls at ~2.5 A. Power it from a servo supply (BEC), never from the board.',
+    checks: (c, x) => (x.comps.some(o => o.type === 'bec') ? [] : [{ level: 'err', uid: c.uid, msg: 'MG996R stall current (~2.5 A) is far beyond what USB or the board can give. Add a 5–6 V servo supply (BEC).' }]),
+  },
+  contservo: {
+    id: 'contservo', name: 'Continuous-rotation servo FS90R', category: 'actuator', group: 'robotics', ui: 'motor', onText: 'turning',
+    roles: [{ id: 'PWM', kind: 'pwm' }], rail: '5v', mA: 100, peakmA: 800, cost: 4, create: contServo,
+    note: '50 Hz like a servo, but the pulse sets speed: 1.5 ms stop, 1.0/2.0 ms full speed each way. Trim the stop point with its pot.',
+  },
+  tb6612: {
+    id: 'tb6612', name: 'TB6612FNG dual motor driver', category: 'actuator', group: 'robotics', ui: 'motor', onText: 'driving',
+    roles: [{ id: 'PWMA', kind: 'pwm' }, { id: 'AIN1', kind: 'digital-out' }, { id: 'AIN2', kind: 'digital-out' }, { id: 'PWMB', kind: 'pwm' }, { id: 'BIN1', kind: 'digital-out' }, { id: 'BIN2', kind: 'digital-out' }],
+    rail: '5v', mA: 300, peakmA: 2400, cost: 3, create: hbridge({ en: ['PWMA', 'PWMB'], a: ['AIN1', 'AIN2'], b: ['BIN1', 'BIN2'] }),
+    note: '1.2 A per channel (3.2 A peak). IN1/IN2 set direction, PWM sets speed. Tie STBY high. Motor power on VM (2.5–13.5 V).',
+  },
+  l298n: {
+    id: 'l298n', name: 'L298N dual motor driver', category: 'actuator', group: 'robotics', ui: 'motor', onText: 'driving',
+    roles: [{ id: 'ENA', kind: 'pwm' }, { id: 'IN1', kind: 'digital-out' }, { id: 'IN2', kind: 'digital-out' }, { id: 'ENB', kind: 'pwm' }, { id: 'IN3', kind: 'digital-out' }, { id: 'IN4', kind: 'digital-out' }],
+    rail: '5v', mA: 300, peakmA: 4000, cost: 2.5, create: hbridge({ en: ['ENA', 'ENB'], a: ['IN1', 'IN2'], b: ['IN3', 'IN4'] }),
+    note: 'Old bipolar bridge: drops ~2 V, so 6 V in gives the motor ~4 V. Remove the ENA/ENB jumpers to PWM them.',
+  },
+  encoder_wheel: {
+    id: 'encoder_wheel', name: 'Wheel encoder (20-slot, optical)', category: 'sensor', group: 'robotics', ui: 'toggle', onText: 'slot',
+    roles: [{ id: 'OUT', kind: 'digital-in' }], rail: '3v3', mA: 15, cost: 0.8, create: wheelEncoder,
+    note: '40 edges per wheel turn (one per 9°). Count them with a pin interrupt; link it to a wheel joint so the robot sim drives it.',
+  },
+  line: {
+    id: 'line', name: 'Line sensor TCRT5000', category: 'sensor', group: 'robotics', ui: 'toggle', onText: 'on line',
+    roles: [{ id: 'OUT', kind: 'digital-in' }], rail: '3v3', mA: 20, cost: 0.6, create: ctx => digitalIn(true)({ ...ctx, setInput: (_r, l) => ctx.setInput('OUT', l) }),
+    note: 'IR reflectance: OUT goes HIGH over a dark line, LOW over a light floor (set the threshold with its pot). Works 2–10 mm above the floor.',
+  },
+  bec: {
+    id: 'bec', name: 'Servo power supply (5–6 V BEC)', category: 'actuator', group: 'robotics', ui: 'relay', onText: 'powering servos',
+    roles: [], rail: null, mA: 0, cost: 6, create: () => ({ state: { on: true } }),
+    note: 'Step-down supply for servos/motors from a 2S LiPo. Set its rating (A) in the robot panel. Share GND with the board.',
+  },
+};
+/** Servos plugged into a PCA9685 (props.servos: [{ ch, type }]). */
+export function servoList(c: CompInstance) {
+  const list: { ch: number; type: string }[] = c.props?.servos ?? [];
+  const n = new Map<string, number>(); for (const s of list) n.set(s.type, (n.get(s.type) ?? 0) + 1);
+  return [...n].map(([type, k]) => ({ type, n: k }));
+}
+function servoPower(c: CompInstance, x: { comps: CompInstance[] }): Check[] {
+  const list: { ch: number; type: string }[] = c.props?.servos ?? [];
+  if (!list.length) return [];
+  const stall = list.reduce((a, s) => a + (SERVO_TYPES[s.type]?.stallmA ?? 700), 0), typical = Math.round(stall * 0.35);
+  const bec = x.comps.find(o => o.type === 'bec'), amps = (bec?.props?.amps ?? 5) * 1000;
+  if (!bec) return [{ level: 'err', uid: c.uid, msg: `${list.length} servos on the PCA9685 can draw ${(stall / 1000).toFixed(1)} A at stall. Power its V+ from a 5–6 V servo supply (BEC), not the board.` }];
+  if (typical > amps) return [{ level: 'err', uid: c.uid, msg: `${list.length} servos draw ~${(typical / 1000).toFixed(1)} A while moving under load, more than the ${amps / 1000} A servo supply. Use a bigger BEC or fewer servos.` }];
+  if (stall > amps) return [{ level: 'warn', uid: c.uid, msg: `If every servo stalls at once they draw ${(stall / 1000).toFixed(1)} A, more than the ${amps / 1000} A supply: expect brown-outs and twitching. Add a large capacitor (1000 µF+) on V+.` }];
+  return [{ level: 'ok', uid: c.uid, msg: `Servo supply ${amps / 1000} A covers ${list.length} servos (stall ${(stall / 1000).toFixed(1)} A).` }];
+}
+Object.assign(MORE, ROBOTICS);
 
 Object.assign(COMPONENTS, MORE);
 

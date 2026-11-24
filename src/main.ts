@@ -11,6 +11,8 @@ import { blankProject, defaultProject, parseProject, serializeProject, type Proj
 import { deleteProject, getMeta, loadProject, migrateLegacy, newProjectId, saveProject, journalWrite, journalClear, journalRecover } from './app/store';
 import { EmptyProduct } from './scene/empty';
 import { BuiltProduct } from './scene/built';
+import { initRobot, robotFrame } from './ui/robot';
+import { robotProject, type RobotKind } from './app/robots';
 import { ElectronicsView } from './scene/electronics';
 import { gizmoBusy, initModeler, newBuiltModel, runAutoBuild, syncGizmo } from './ui/modeler';
 import { atHome, initHome, renderHome, showHome, hideHome } from './ui/home';
@@ -87,16 +89,18 @@ class FormframeApp implements App {
     initDesign(this, f => this.importCad(f));
     initProto(this);
     initElec(this);
+    initRobot(this);
     this.wireUI();
     this.renderAll();
     this.setMode('design');
-    this.viewport.onTick((dt, now) => { this.product.tick(dt, now); this.elec.tick(dt); elecFrame(dt); placePins(this); });
+    this.viewport.onTick((dt, now) => { robotFrame(dt); this.product.tick(dt, now); this.elec.tick(dt); elecFrame(dt); placePins(this); });
     if (document.fonts?.ready) document.fonts.ready.then(() => { if (this.mode !== 'elec') redrawScreen(this); });
     initTour(m => this.setMode(m));
     initHome({
       openProject: id => this.openProject(id),
       newBlank: board => this.createProject(blankProject(board), 'Blank project'),
       newExample: () => this.createProject(defaultProject(), 'The First Step'),
+      newRobot: (k: string) => this.createProject(robotProject(k as RobotKind), robotProject(k as RobotKind).name),
       openFile: () => $('#fileProject').click(),
       openFolder: () => this.openFolder(),
       duplicateProject: id => this.duplicateProject(id),

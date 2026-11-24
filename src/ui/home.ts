@@ -1,5 +1,6 @@
 import { $, el, esc } from './dom';
 import { BOARDS, boardOptions } from '../hw/library/boards';
+import { ROBOT_KINDS } from '../app/robots';
 import { listProjects, persistent, type ProjectMeta } from '../app/store';
 
 /** Actions the home screen asks the app to perform. */
@@ -7,6 +8,7 @@ export interface HomeHost {
   openProject(id: string): void;
   newBlank(board: string): void;
   newExample(): void;
+  newRobot(kind: string): void;
   openFile(): void;
   openFolder(): void;
   duplicateProject(id: string): void;
@@ -31,6 +33,8 @@ export function initHome(h: HomeHost) {
   $('#homeBoard').innerHTML = boardOptions();
   $('#hBlank').onclick = e => { if ((e.target as HTMLElement).closest('select')) return; host.newBlank(($('#homeBoard') as HTMLSelectElement).value); };
   $('#hExample').onclick = () => host.newExample();
+  $('#hRobots').innerHTML = ROBOT_KINDS.map(r => `<button class="start robot" data-k="${r.id}"><div class="ic ic-robot ic-${r.id}"></div><b>${esc(r.name)}</b><span>${esc(r.blurb)}</span></button>`).join('');
+  $('#hRobots').querySelectorAll<HTMLElement>('button').forEach(b => (b.onclick = () => host.newRobot(b.dataset.k!)));
   $('#hOpen').onclick = () => host.openFile();
   $('#hFolder').onclick = () => host.openFolder();
   $('#hTour').onclick = () => host.startTour();

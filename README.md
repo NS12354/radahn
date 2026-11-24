@@ -56,6 +56,48 @@ Displays draw onto the product's screen. Auto build cuts a correctly sized windo
 
 In a blank project, adding parts writes a demo program for all of them in the board's language (MicroPython, Python with gpiozero, or Arduino C++). MicroPython drivers (`lib/ssd1306.py`, `lib/i2c_lcd.py`, `lib/tm1637.py`, `lib/hcsr04.py`, `lib/mpu6050.py`, `lib/aht20.py`, `lib/bh1750.py`, `lib/stepper.py`) are added with their part. They are plain MicroPython, so they run on the emulated Pico, in the simulator and on a real board. To add your own board or part, see `src/hw/library/boards.ts`, `components.ts` and `src/hw/devices/parts.ts`.
 
+### Robots
+
+The home screen has five robot templates. Each comes with the 3D model, its joints, the electronics wired to drive them, a world to move in, and firmware:
+
+| Template | Hardware | Firmware |
+|---|---|---|
+| **Robot arm** | 4 axes + gripper, PCA9685, MG996R/SG90, servo supply | Inverse kinematics (`arm.move_to(x, y, z)`), pick-and-place, plays poses recorded in teach mode. Real MicroPython on the emulated Pico. |
+| **Obstacle-avoiding rover** | 2WD, TB6612FNG, HC-SR04, wheel encoders | Drives around a room and backs away from obstacles the sonar sees. |
+| **Line follower** | 2WD, two TCRT5000 line sensors | Follows a dark line around a track. |
+| **Robot dog** | 12 DS3218 servos on a PCA9685, MPU-6050 | Leg IK, creep gait, turning, IMU balancing. |
+| **Hexapod** | 18 MG996R servos on two PCA9685s (0x40, 0x41) | Leg IK, tripod gait, turning. |
+
+How it works (`src/app/kinematics.ts`, `src/app/robot.ts`):
+
+- **Joints.** Any part can be attached to a parent part and given a joint, in the Design inspector under *Robot joint*:
+  - A joint can rotate (revolute), slide (prismatic) or spin (wheel).
+  - Each joint has an axis, a pivot and limits.
+  - It is driven by a servo, a PCA9685 channel, a stepper, a motor, or a motor-driver channel.
+  - The firmware's real signals drive the joint. For example, the PCA9685 model decodes the I2C register writes into pulse widths, and those become angles.
+  - Joints move at the servo's rated speed.
+- **Wheels.** Driven wheel speeds are fitted to a body velocity and turn rate by least squares, which covers both 2WD and skid steer. Walls and obstacles block the body.
+- **Legs.** Walking uses a kinematic contact model:
+  - Planted feet don't slip.
+  - The lowest foot rests on the floor.
+  - When the centre of mass leaves the support polygon, the body tips about the edge of its support until another foot lands. If none does, it falls over.
+  - A servo only holds about 60% of its stall torque continuously. When the load is higher, the joint sags.
+  - This is not a full rigid-body dynamics engine. Fast dynamic gaits such as trotting and running aren't modelled faithfully.
+- **Sensors read the world.**
+  - The ultrasonic and IR sensors raycast to obstacles and walls.
+  - Line sensors read the track under them.
+  - The MPU-6050 reads the body's tilt.
+  - Wheel encoders count slots as the wheels turn.
+- **Teach mode.** While no firmware is running, the Robot panel's sliders move the joints. *Record pose* saves the current pose, and *Use in code* writes the recorded poses into `POSES` in `main.py`.
+- **Power checks.** Servos on a PCA9685 are counted against the servo supply (BEC), using each servo's stall current.
+
+**ROS.**
+- *Export URDF* writes a URDF in metres, Z up, x forward. It has box/cylinder/sphere geometry, limits and estimated inertia, so it loads in RViz and Gazebo.
+- *Import URDF* turns a URDF into parts and joints. Mesh visuals become placeholder boxes.
+- The **ROS 2 bridge** connects to `rosbridge_server` (`ros2 launch rosbridge_server rosbridge_websocket_launch.xml`):
+  - It publishes `/joint_states` (with the URDF's joint names) and `/formframe/pose`.
+  - It listens to `/cmd_vel` (wheeled robots, while no firmware is running) and `/formframe/joint_commands`.
+
 ### The emulator runs slower than real time
 
 rp2040js typically runs at 0.3–0.5× real time on a laptop, and the speed is shown next to the target selector. Time-based code (`sleep_ms`, `ticks_ms`) uses emulated time, so behavior stays correct, just slower. Wiring and protocol errors show up exactly as on hardware.

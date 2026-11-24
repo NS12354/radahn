@@ -24,6 +24,23 @@ const shown = () => document.body.classList.contains('claude-on');
 function status(s: string, cls = '') { const e = $('#clStatus'); e.textContent = s; e.className = 'clstatus ' + cls; }
 
 /** CLAUDE.md for the workspace: what the board is, how it's wired, and the house rules. */
+/** The robot's joints and what drives them (empty for non-robots). */
+function robotDoc(): string {
+  const m = A.project.product.built; if (!m) return '';
+  const js = m.parts.filter(p => p.joint && p.joint.type !== 'fixed'); if (!js.length) return '';
+  const comps = A.project.electronics.comps;
+  const drv = (p: typeof js[number]) => { const d = p.joint!.drive; if (!d) return 'nothing yet (moved by the teach slider)'; const c = comps.find(x => x.uid === d.comp); if (!c) return 'a missing part'; const n = COMPONENTS[c.type]?.name ?? c.type; return `${n}${c.type === 'pca9685' ? ` (0x${(c.props?.address ?? 0x40).toString(16)}) channel ${d.channel ?? 0}` : c.type === 'tb6612' || c.type === 'l298n' ? ` motor ${d.channel ? 'B' : 'A'}` : ''}${d.invert ? ', reversed' : ''}`; };
+  const axis = (a: number[]) => ['X (left)', 'Y (up)', 'Z (forward)'][a.map(Math.abs).indexOf(Math.max(...a.map(Math.abs)))] + (Math.min(...a) < 0 ? ' reversed' : '');
+  const r = m.robot;
+  return `## Robot (${r?.kind ?? 'custom'}, ${r?.mobile === 'legs' ? 'walks on legs' : r?.mobile === 'wheels' ? 'drives on wheels' : 'bolted down'}, ${r?.mass ?? '?'} g)
+The 3D model moves with the firmware: servo angle 90° = the joint's rest pose shown in the model (angle − 90 = joint degrees; "reversed" flips it).
+${js.map(p => `- **${p.name}**: ${p.joint!.type === 'wheel' ? 'wheel' : p.joint!.type === 'prismatic' ? `slides ${p.joint!.min ?? 0}–${p.joint!.max ?? 10} mm` : `rotates ${p.joint!.min ?? -180}° to ${p.joint!.max ?? 180}°`} about ${axis(p.joint!.axis)}; driven by ${drv(p)}`).join('\n')}
+${r?.world ? `World: ${r.world.size / 1000} m floor${r.world.obstacles.length ? `, ${r.world.obstacles.length} obstacles (the ultrasonic/IR sensors see them)` : ''}${r.world.track ? ', a dark line track (line sensors read HIGH over it)' : ''}.` : ''}
+Libraries in lib/: pca9685.py (Servos.angle(ch, deg)), arm.py (Arm.move_to(x, y, z) inverse kinematics), legs.py (leg IK + gaits), rover.py (Rover.drive(left, right)).
+
+`;
+}
+
 export function contextDoc(): string {
   const e = A.project.electronics, b = A.board();
   const label = (g: number | null) => g == null ? 'not connected' : (b.label?.(g) ?? `${b.pfx}${g}`);
@@ -47,7 +64,7 @@ ${b.notes}
 ## Wiring (from the studio's bench)
 ${parts.join('\n') || '- Nothing is wired yet.'}
 
-You can change the wiring by editing \`${WIRING_FILE}\` (the catalog of parts and pins is in \`${PARTS_FILE}\`):
+${robotDoc()}You can change the wiring by editing \`${WIRING_FILE}\` (the catalog of parts and pins is in \`${PARTS_FILE}\`):
 - **Moving pins** of parts already on the bench is applied right away.
 - **Adding or removing hardware, or changing the board: ask the user in this chat first and wait for a yes.** Then edit \`${WIRING_FILE}\`; Formframe also shows them an Approve / Decline card and applies nothing until they approve.
 - After each edit Formframe rewrites \`${WIRING_FILE}\` with what is actually wired and a \`_status\` line saying what happened (applied, waiting for approval, declined, or why it was rejected). Re-read it before relying on the change, and update the code to match the pins.

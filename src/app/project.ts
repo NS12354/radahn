@@ -1,5 +1,6 @@
 import type { CompInstance } from '../hw/types';
 import { demoFiles, libsFor } from '../hw/partcode';
+import { robotFiles } from './robots';
 import { BOARDS, KIT_PRESETS } from '../hw/library/boards';
 import { COMPONENTS, KIT } from '../hw/library/components';
 import { blankFiles, defaultFiles } from '../hw/templates';
@@ -62,6 +63,49 @@ export interface BuiltPart {
   smooth?: boolean;
   /** Set once the part has been through Blender (live link): Blender's geometry hash and object matrix. */
   bl?: { hash: string; sig: string; matrix: number[]; pos: [number, number, number]; rot: [number, number, number] };
+  /** Robots: the part this one is attached to. It moves with its parent (and its joint, if it has one). */
+  parent?: string;
+  /** Robots: how this part moves relative to its parent. Pivot and axis are in model space, at rest. */
+  joint?: Joint;
+  /** Robots: a foot (legged robots stand and walk on these). Its contact point is the bottom of the part. */
+  foot?: boolean;
+}
+
+export type JointType = 'revolute' | 'prismatic' | 'wheel' | 'fixed';
+export interface Joint {
+  type: JointType;
+  /** Pivot point (revolute/wheel) or start point (prismatic), mm, model space at rest. */
+  pivot: [number, number, number];
+  /** Rotation / slide axis, model space at rest (normalised when used). */
+  axis: [number, number, number];
+  /** Limits: degrees (revolute) or mm (prismatic). Wheels spin freely. */
+  min?: number;
+  max?: number;
+  /**
+   * What moves it: an electronics component (servo, PCA9685 channel, stepper, motor driver channel).
+   * The joint angle = (actuator angle − 90°) × (invert ? −1 : 1) + offset, for servos.
+   */
+  drive?: { comp: string; channel?: number; invert?: boolean; offset?: number };
+  /** Encoders that report this wheel's rotation (component uids). */
+  sensors?: string[];
+}
+
+/** A robot's surroundings: a floor, things to bump into and a line to follow (mm, Y up). */
+export interface World {
+  size: number;
+  obstacles: { shape: 'box' | 'cyl'; pos: [number, number]; size: [number, number, number]; color?: string }[];
+  /** A dark line on the floor (closed loop through these XZ points). */
+  track?: { points: [number, number][]; width: number };
+}
+export interface RobotSpec {
+  kind: 'arm' | 'rover' | 'legs' | 'custom';
+  /** How the body moves: bolted down, on wheels, or on legs. */
+  mobile: 'fixed' | 'wheels' | 'legs';
+  /** Total mass in grams (legs: load on the servos). */
+  mass: number;
+  world?: World;
+  /** Poses recorded in teach mode: joint part id → value. */
+  poses?: { name: string; joints: Record<string, number> }[];
 }
 
 export interface AutoBuildOpts {
@@ -80,6 +124,8 @@ export interface BuiltModel {
   notes: string[];
   /** Bumped on every edit so the studio and modeler windows never adopt an older copy. */
   rev?: number;
+  /** Set when the model is a robot: how it moves and its surroundings. */
+  robot?: RobotSpec;
 }
 
 export const defaultAutoOpts = (): AutoBuildOpts => ({ style: 'auto', wall: 2, clearance: 1, battery: false, mount: 'none' });
@@ -119,7 +165,9 @@ export interface Project {
     activeFile: string;
     filesEdited: boolean;
     /** Which code "Reset code" and wiring changes regenerate: the The First Step or an empty skeleton. */
-    starter: 'thermostat' | 'blank';
+    starter: 'thermostat' | 'blank' | 'robot';
+    /** Robot template this project came from (its code is regenerated while unedited). */
+    robot?: string;
     /** Parts imported from a link or defined by hand, carried with the project. */
     custom?: Record<string, CustomPartSpec>;
   };
@@ -186,6 +234,7 @@ export function defaultProject(): Project {
 
 /** Starter code for the project's board, following its starter kind. */
 export function starterFiles(b: BoardDef, e: Project['electronics']): Record<string, string> {
+  if (e.starter === 'robot' && e.robot) return robotFiles(b, e.robot, e.comps);
   return e.starter === 'blank' ? demoFiles(b, e.comps) ?? blankFiles(b) : { ...defaultFiles(b, e.comps), ...libsFor(b, e.comps) };
 }
 

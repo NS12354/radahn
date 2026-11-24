@@ -158,6 +158,8 @@ async function stop() {
 }
 export const elecRunning = () => !!runtime?.running;
 export function stopElec() { if (runtime?.running) stop(); }
+/** Is firmware running on the virtual board (so the bench drives the robot)? */
+export const firmwareRunning = () => !!runtime?.running && target === 'virtual';
 
 function setRunUI(starting = false) {
   const on = starting || !!runtime?.running;
@@ -363,6 +365,7 @@ function liveHTML(c: CompInstance) {
     case 'stepper': return '<svg width="46" height="46"><circle cx="23" cy="23" r="20" fill="#2a2d33" stroke="#555"/><g class="arm2"><rect x="21.5" y="5" width="3" height="18" rx="1.5" fill="#ff7a2f"/></g><circle cx="23" cy="23" r="4" fill="#ccc"/></svg><span class="big stv" style="font-size:10px;margin-left:8px">0°</span>';
     case 'distance': return '<div style="text-align:center;width:100%"><div class="big dsv">50 cm</div><input type="range" min="2" max="400" step="1" value="50" class="dsr" title="Distance to the object"><div style="font-size:9.5px" class="dsp">no pings yet</div></div>';
     case 'imu': return '<svg width="44" height="44"><g class="imub"><rect x="8" y="17" width="28" height="10" rx="2" fill="#2b5cb0"/><rect x="18" y="19" width="8" height="6" fill="#111"/></g></svg><div style="font-size:9.5px;display:grid;gap:2px;margin-left:6px"><label>pitch <input type="range" min="-90" max="90" value="0" class="imp" style="width:70px"></label><label>roll <input type="range" min="-90" max="90" value="0" class="imr" style="width:70px"></label></div>';
+    case 'servos': return `<div class="svgrid">${Array.from({ length: 16 }, (_, i) => `<div class="sv" title="Channel ${i}"><i></i><span>${i}</span></div>`).join('')}</div><span class="big svs" style="position:absolute;bottom:2px;right:6px;font-size:9px"></span>`;
     case 'display': return '<canvas width="128" height="64" class="dspc"></canvas><span class="big dsps" style="position:absolute;bottom:3px;right:6px;font-size:9px"></span>';
     case 'haptic': return '<div class="big hpv">idle</div>';
   }
@@ -464,6 +467,7 @@ export function elecFrame(dt: number) {
     if (k === 'stepper') { d.querySelector('.arm2')!.setAttribute('transform', `rotate(${st.angle ?? 0} 23 23)`); d.querySelector('.stv')!.textContent = `${Math.round(((st.angle ?? 0) + 360) % 360)}° · ${st.steps ?? 0} steps`; }
     if (k === 'distance') { d.querySelector('.dsv')!.textContent = `${st.cm} cm`; d.querySelector('.dsp')!.textContent = st.pings ? `${st.pings} pings` : 'no pings yet'; }
     if (k === 'imu') { d.querySelector('.imub')!.setAttribute('transform', `rotate(${st.roll ?? 0} 22 22) translate(0 ${(st.pitch ?? 0) / 10})`); }
+    if (k === 'servos') { const ch = st.ch ?? []; d.querySelectorAll<HTMLElement>('.sv').forEach((x, i) => { const a = ch[i]?.angle; x.classList.toggle('on', a != null); (x.querySelector('i') as HTMLElement).style.transform = `rotate(${(a ?? 90) - 90}deg)`; x.title = `Channel ${i}: ${a != null ? Math.round(a) + '° (' + ch[i].us + ' µs)' : 'no pulse'}`; }); d.querySelector('.svs')!.textContent = st.asleep ? 'asleep' : `${st.freq} Hz`; }
     if (k === 'display') { const v = A.bench.model(c.uid)?.view?.(); const cv = d.querySelector('.dspc') as HTMLCanvasElement; if (v && st.active) { if (cv.width !== v.width || cv.height !== v.height) { cv.width = v.width; cv.height = v.height; } cv.getContext('2d')!.drawImage(v as any, 0, 0); } d.querySelector('.dsps')!.textContent = st.active ? '' : 'waiting for data'; }
     if (kind(c) === 'encoder') { d.querySelector('.knob')!.setAttribute('transform', `rotate(${(st.count ?? 0) * 18} 25 25)`); d.querySelector('.encn')!.textContent = String(st.count ?? 0); }
     if (kind(c) === 'pot') d.querySelector('.potv')!.textContent = ((st.value ?? 0.5) * 3.3).toFixed(2) + ' V';
@@ -484,7 +488,7 @@ function renderChecks() {
   $('#chkBadge').innerHTML = e ? `<span class="badge bad">${e} broken</span>` : w ? `<span class="badge warn">${w} to check</span>` : '<span class="badge ok">OK</span>';
   $('#chkList').innerHTML = ch.length ? ch.map(c => `<div class="chk ${c!.level === 'broken' ? 'err' : c!.level === 'warning' ? 'warn' : 'tip'}" title="${esc(c!.why ?? '')}"><i></i><span>${esc(c!.title)}</span></div>`).join('') + '<a class="chkmore">Details and fixes →</a>' : '<div class="chk ok"><i></i><span>Wiring looks good.</span></div>';
   const more = document.querySelector<HTMLElement>('#chkList .chkmore'); if (more) more.onclick = () => openPanel();
-  const rows: [string, number][] = [[board().name, board().cost], ...A.project.electronics.comps.map(c => [COMPONENTS[c.type].name, COMPONENTS[c.type].cost] as [string, number])];
+  const rows: [string, number][] = [[board().name, board().cost], ...A.project.electronics.comps.flatMap(c => [[COMPONENTS[c.type].name, COMPONENTS[c.type].cost] as [string, number], ...(COMPONENTS[c.type].bom?.(c) ?? [])])];
   $('#ebom').innerHTML = rows.map(r => `<tr><td>${esc(r[0])}</td><td>$${r[1].toFixed(2)}</td></tr>`).join('') + `<tr class="tot"><td>Dev-kit total</td><td>$${rows.reduce((a, r) => a + r[1], 0).toFixed(2)}</td></tr>`;
 }
 
