@@ -1,6 +1,6 @@
 import type { App } from './app';
 import { $, $$, b64decode, el, esc, toast } from './dom';
-import { BOARDS, KIT_PRESETS, pinLabel } from '../hw/library/boards';
+import { BOARDS, KIT_PRESETS, pinLabel, boardOptions } from '../hw/library/boards';
 import { COMPONENTS } from '../hw/library/components';
 import { runChecks, buildPinMap } from '../hw/checks';
 import { RP2040Runtime } from '../hw/runtimes/rp2040';
@@ -14,10 +14,16 @@ import { initParts, renderLib } from './parts';
 import { codeChanged, wiringEdited, openPanel } from './health';
 import { track } from './track';
 import { gh, GH_MIME, CODE_EXT, type GhDrag } from '../app/github';
+import { libsFor } from '../hw/partcode';
 import { explainCheck } from '../app/explain';
 
 /** Card/visual type: built-ins use their own type; imported parts borrow the closest built-in card. */
-const kind = (c: CompInstance) => { const s = customOf(c.type); return s ? cardKind(s) : c.type; };
+const CARD: Record<string, string> = { sensor: 'sht40', ring: 'neopixel', screen: 'tft' };
+const kind = (c: CompInstance): string => { const s = customOf(c.type); if (s) return cardKind(s); const ui = COMPONENTS[c.type]?.ui; return ui ? CARD[ui] ?? ui : c.type; };
+const def = (c: CompInstance) => COMPONENTS[c.type];
+const fmt = (x: number, step = 1) => (step < 1 ? x.toFixed(1) : String(Math.round(x)));
+/** '#3d8bff' → [61, 139, 255] */
+const rgbOf = (hex: string) => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
 import type { CompInstance, Runtime } from '../hw/types';
 
 type AnyRuntime = Runtime & { onExit?: (e: string) => void; interrupt?: () => void; speed?: () => number };
@@ -339,7 +345,7 @@ function newFile() {
 function liveHTML(c: CompInstance) {
   switch (kind(c)) {
     case 'generic': return `<div class="gen"><div class="big genv">idle</div><div class="genn">${esc(customOf(c.type)!.interface.toUpperCase())}${customOf(c.type)!.i2cAddress != null ? ' · 0x' + customOf(c.type)!.i2cAddress!.toString(16) : ''}</div></div>`;
-    case 'led': return '<svg width="40" height="40"><circle cx="20" cy="20" r="11" fill="#401010" class="ledc"/></svg>';
+    case 'led': return `<svg width="40" height="40"><circle cx="20" cy="20" r="11" fill="${def(c)?.tint ? def(c).tint + '33' : '#401010'}" class="ledc"/></svg>`;
     case 'button': return '<button class="pushbtn" title="Hold to press"></button>';
     case 'encoder': return '<button class="encbtn" data-d="-1">↺</button><svg width="50" height="50" style="margin:0 6px"><g class="knob"><circle cx="25" cy="25" r="20" fill="#3a3a3f" stroke="#555"/><rect x="23.5" y="8" width="3" height="10" rx="1.5" fill="#ff7a2f"/></g></svg><button class="encbtn" data-d="1">↻</button><span class="big encn" style="position:absolute;bottom:3px;right:6px;font-size:10px"></span>';
     case 'pot': return `<input type="range" min="0" max="1" step="0.001" value="0.5" class="potr"><span class="big potv" style="position:absolute;bottom:3px;font-size:10px"></span>`;
@@ -348,7 +354,16 @@ function liveHTML(c: CompInstance) {
     case 'tft': return '<canvas width="56" height="56" class="tftm" style="border-radius:50%;background:#000"></canvas><span class="big tfts" style="position:absolute;bottom:3px;right:6px;font-size:9px"></span>';
     case 'buzzer': return `<div style="text-align:center"><div class="big bzv">silent</div><label style="font-size:10px"><input type="checkbox" class="bzm" ${audio.muted ? 'checked' : ''}> mute</label></div>`;
     case 'servo': return '<svg width="70" height="50"><rect x="20" y="22" width="30" height="22" rx="3" fill="#2b5cb0"/><g class="arm" transform="rotate(0 35 26)"><rect x="33" y="8" width="4" height="22" rx="2" fill="#eee"/></g><circle cx="35" cy="26" r="4" fill="#ddd"/></svg>';
-    case 'relay': return '<div style="text-align:center"><div class="big rlv">OFF</div><div style="font-size:10px">heating call</div></div>';
+    case 'relay': return `<div style="text-align:center"><div class="big rlv">OFF</div><div style="font-size:10px">${esc(def(c).onText ?? 'heating call')}</div></div>`;
+    case 'toggle': return `<button class="tglbtn" title="Click to switch"><i></i></button><span class="big tglv" style="font-size:10px;margin-left:8px">off</span>`;
+    case 'meter': { const r = def(c).reading!; return `<div style="text-align:center;width:100%"><div class="big mtv">${fmt(r.dflt, r.step)} ${esc(r.unit)}</div><input type="range" min="${r.min}" max="${r.max}" step="${r.step ?? 1}" value="${r.dflt}" class="mtr" title="${esc(r.label)}"><div style="font-size:9.5px" class="mtl">${esc(r.label)}</div></div>`; }
+    case 'joystick': return '<div class="joypad" title="Drag the stick; double-click to press it"><i></i></div><span class="big joyv" style="font-size:10px;margin-left:8px">0, 0</span>';
+    case 'rgb': return '<svg width="40" height="40"><circle cx="20" cy="20" r="12" fill="#222" class="rgbc"/></svg><span class="big rgbv" style="font-size:9px;margin-left:6px"></span>';
+    case 'motor': return '<svg width="44" height="44"><circle cx="22" cy="22" r="19" fill="#2a2d33" stroke="#555"/><g class="rot"><path d="M22 22 L22 6 A16 16 0 0 1 35 13 Z M22 22 L36 30 A16 16 0 0 1 22 38 Z M22 22 L8 30 A16 16 0 0 1 9 13 Z" fill="#7d8796"/></g><circle cx="22" cy="22" r="3.5" fill="#ccc"/></svg><span class="big mov" style="font-size:10px;margin-left:8px">stopped</span>';
+    case 'stepper': return '<svg width="46" height="46"><circle cx="23" cy="23" r="20" fill="#2a2d33" stroke="#555"/><g class="arm2"><rect x="21.5" y="5" width="3" height="18" rx="1.5" fill="#ff7a2f"/></g><circle cx="23" cy="23" r="4" fill="#ccc"/></svg><span class="big stv" style="font-size:10px;margin-left:8px">0°</span>';
+    case 'distance': return '<div style="text-align:center;width:100%"><div class="big dsv">50 cm</div><input type="range" min="2" max="400" step="1" value="50" class="dsr" title="Distance to the object"><div style="font-size:9.5px" class="dsp">no pings yet</div></div>';
+    case 'imu': return '<svg width="44" height="44"><g class="imub"><rect x="8" y="17" width="28" height="10" rx="2" fill="#2b5cb0"/><rect x="18" y="19" width="8" height="6" fill="#111"/></g></svg><div style="font-size:9.5px;display:grid;gap:2px;margin-left:6px"><label>pitch <input type="range" min="-90" max="90" value="0" class="imp" style="width:70px"></label><label>roll <input type="range" min="-90" max="90" value="0" class="imr" style="width:70px"></label></div>';
+    case 'display': return '<canvas width="128" height="64" class="dspc"></canvas><span class="big dsps" style="position:absolute;bottom:3px;right:6px;font-size:9px"></span>';
     case 'haptic': return '<div class="big hpv">idle</div>';
   }
   return '';
@@ -381,10 +396,22 @@ function renderBench() {
     d.querySelectorAll<HTMLSelectElement>('select').forEach(sel => (sel.onchange = () => { c.pins[sel.dataset.role!] = sel.value === '' ? null : +sel.value; track('wiring', `Rewired the ${L.name} ${sel.dataset.role} to ${sel.value === '' ? 'nothing' : label(+sel.value)}`); wiringChanged(); }));
     const live = d.querySelector('.live')!;
     if (kind(c) === 'button') { const pb = live.querySelector<HTMLButtonElement>('.pushbtn')!; pb.onpointerdown = e => { e.preventDefault(); audio.unlock(); A.bench.model(c.uid)?.sim?.press(true); pb.classList.add('dn'); }; pb.onpointerup = pb.onpointerleave = () => { if (pb.classList.contains('dn')) { A.bench.model(c.uid)?.sim?.press(false); pb.classList.remove('dn'); } }; }
-    if (c.type === 'encoder') live.querySelectorAll<HTMLButtonElement>('.encbtn').forEach(x => (x.onclick = () => { const dd = +x.dataset.d!; if (bound) A.product.rotateDial(dd * Math.PI / 10); if (bound) elecDial(dd); else A.bench.model(c.uid)?.sim?.turn(dd); }));
+    if (kind(c) === 'encoder') live.querySelectorAll<HTMLButtonElement>('.encbtn').forEach(x => (x.onclick = () => { const dd = +x.dataset.d!; if (bound) A.product.rotateDial(dd * Math.PI / 10); if (bound) elecDial(dd); else A.bench.model(c.uid)?.sim?.turn(dd); }));
     if (kind(c) === 'pot') { const r = live.querySelector<HTMLInputElement>('.potr')!; r.oninput = () => A.bench.model(c.uid)?.sim?.set(+r.value); }
-    if (c.type === 'sht40') { const r = live.querySelector<HTMLInputElement>('.shr')!; r.value = String(A.project.env.roomC); r.oninput = () => { A.project.env.roomC = +r.value; }; }
-    if (c.type === 'buzzer') live.querySelector<HTMLInputElement>('.bzm')!.onchange = e => { audio.muted = (e.target as HTMLInputElement).checked; if (audio.muted) audio.silenceAll(); };
+    if (kind(c) === 'sht40') { const r = live.querySelector<HTMLInputElement>('.shr')!; r.value = String(A.project.env.roomC); r.oninput = () => { A.project.env.roomC = +r.value; }; }
+    const sim = () => A.bench.model(c.uid)?.sim;
+    if (kind(c) === 'toggle') { const tb = live.querySelector<HTMLButtonElement>('.tglbtn')!; tb.onclick = () => { audio.unlock(); const on = !tb.classList.contains('on'); tb.classList.toggle('on', on); sim()?.press(on); }; }
+    if (kind(c) === 'meter') { const r = live.querySelector<HTMLInputElement>('.mtr')!; const st = A.bench.model(c.uid)?.state; if (st?.x != null) r.value = String(st.x); r.oninput = () => sim()?.set(+r.value); }
+    if (kind(c) === 'distance') { const r = live.querySelector<HTMLInputElement>('.dsr')!; const st = A.bench.model(c.uid)?.state; if (st) r.value = String(st.cm); r.oninput = () => { const s = A.bench.model(c.uid)?.state; if (s) s.cm = +r.value; }; }
+    if (kind(c) === 'imu') { const p = live.querySelector<HTMLInputElement>('.imp')!, q = live.querySelector<HTMLInputElement>('.imr')!; p.oninput = q.oninput = () => sim()?.tilt(+p.value, +q.value); }
+    if (kind(c) === 'joystick') {
+      const pad = live.querySelector<HTMLElement>('.joypad')!;
+      const move = (e: PointerEvent) => { const r = pad.getBoundingClientRect(); const x = Math.max(-1, Math.min(1, ((e.clientX - r.left) / r.width) * 2 - 1)), y = Math.max(-1, Math.min(1, ((e.clientY - r.top) / r.height) * 2 - 1)); sim()?.set(x, -y); };
+      pad.onpointerdown = e => { pad.setPointerCapture(e.pointerId); move(e); pad.onpointermove = move; };
+      pad.onpointerup = () => { pad.onpointermove = null; sim()?.set(0, 0); };
+      pad.ondblclick = () => { sim()?.press(true); setTimeout(() => sim()?.press(false), 250); };
+    }
+    if (kind(c) === 'buzzer') live.querySelector<HTMLInputElement>('.bzm')!.onchange = e => { audio.muted = (e.target as HTMLInputElement).checked; if (audio.muted) audio.silenceAll(); };
     box.appendChild(d);
   }
   requestAnimationFrame(drawWires);
@@ -423,17 +450,31 @@ export function elecFrame(dt: number) {
   for (const c of A.project.electronics.comps) {
     const d = document.querySelector(`.card[data-uid="${c.uid}"] .live`); if (!d) continue;
     const st = A.bench.model(c.uid)?.state ?? {};
-    if (kind(c) === 'led') { const x = d.querySelector('.ledc') as SVGElement, l = st.brightness ?? 0; x.setAttribute('fill', l > 0 ? `rgba(255,${(60 + 80 * l) | 0},40,${0.35 + 0.65 * l})` : '#401010'); (x as any).style.filter = l > 0 ? `drop-shadow(0 0 ${6 * l}px #ff5a2a)` : 'none'; }
-    if (c.type === 'encoder') { d.querySelector('.knob')!.setAttribute('transform', `rotate(${(st.count ?? 0) * 18} 25 25)`); d.querySelector('.encn')!.textContent = String(st.count ?? 0); }
+    if (kind(c) === 'led') {
+      const x = d.querySelector('.ledc') as SVGElement, l = st.brightness ?? 0, tint = def(c)?.tint;
+      if (tint) { const [r, g, b] = rgbOf(tint); x.setAttribute('fill', l > 0 ? `rgba(${r},${g},${b},${0.35 + 0.65 * l})` : tint + '33'); (x as any).style.filter = l > 0 ? `drop-shadow(0 0 ${6 * l}px ${tint})` : 'none'; }
+      else { x.setAttribute('fill', l > 0 ? `rgba(255,${(60 + 80 * l) | 0},40,${0.35 + 0.65 * l})` : '#401010'); (x as any).style.filter = l > 0 ? `drop-shadow(0 0 ${6 * l}px #ff5a2a)` : 'none'; }
+    }
+    const k = kind(c);
+    if (k === 'toggle') { const on = !!st.down; d.querySelector('.tglbtn')!.classList.toggle('on', on); d.querySelector('.tglv')!.textContent = on ? def(c).onText ?? 'on' : 'off'; }
+    if (k === 'meter') { const r = def(c).reading!; d.querySelector('.mtv')!.textContent = `${fmt(st.x ?? r.dflt, r.step)} ${r.unit}`; }
+    if (k === 'joystick') { (d.querySelector('.joypad i') as HTMLElement).style.transform = `translate(${(st.x ?? 0) * 14}px, ${-(st.y ?? 0) * 14}px)`; d.querySelector('.joypad')!.classList.toggle('dn', !!st.down); d.querySelector('.joyv')!.textContent = `${Math.round((st.x ?? 0) * 100)}, ${Math.round((st.y ?? 0) * 100)}${st.down ? ' ●' : ''}`; }
+    if (k === 'rgb') { const v = [st.r ?? 0, st.g ?? 0, st.b ?? 0], on = v.some(x => x > 0.02); const col = `rgb(${v.map(x => Math.round(40 + 215 * x)).join(',')})`; const x = d.querySelector('.rgbc') as SVGElement; x.setAttribute('fill', on ? col : '#222'); (x as any).style.filter = on ? `drop-shadow(0 0 6px ${col})` : 'none'; d.querySelector('.rgbv')!.textContent = on ? v.map(x => Math.round(x * 100)).join(' / ') + ' %' : ''; }
+    if (k === 'motor') { d.querySelector('.rot')!.setAttribute('transform', `rotate(${((st.turns ?? 0) * 360) % 360} 22 22)`); const sp = st.speed ?? 0; d.querySelector('.mov')!.textContent = Math.abs(sp) > 0.05 ? `${def(c).onText ?? 'on'} ${Math.round(Math.abs(sp) * 100)}%${sp < 0 ? ' ⟲' : ''}` : 'stopped'; }
+    if (k === 'stepper') { d.querySelector('.arm2')!.setAttribute('transform', `rotate(${st.angle ?? 0} 23 23)`); d.querySelector('.stv')!.textContent = `${Math.round(((st.angle ?? 0) + 360) % 360)}° · ${st.steps ?? 0} steps`; }
+    if (k === 'distance') { d.querySelector('.dsv')!.textContent = `${st.cm} cm`; d.querySelector('.dsp')!.textContent = st.pings ? `${st.pings} pings` : 'no pings yet'; }
+    if (k === 'imu') { d.querySelector('.imub')!.setAttribute('transform', `rotate(${st.roll ?? 0} 22 22) translate(0 ${(st.pitch ?? 0) / 10})`); }
+    if (k === 'display') { const v = A.bench.model(c.uid)?.view?.(); const cv = d.querySelector('.dspc') as HTMLCanvasElement; if (v && st.active) { if (cv.width !== v.width || cv.height !== v.height) { cv.width = v.width; cv.height = v.height; } cv.getContext('2d')!.drawImage(v as any, 0, 0); } d.querySelector('.dsps')!.textContent = st.active ? '' : 'waiting for data'; }
+    if (kind(c) === 'encoder') { d.querySelector('.knob')!.setAttribute('transform', `rotate(${(st.count ?? 0) * 18} 25 25)`); d.querySelector('.encn')!.textContent = String(st.count ?? 0); }
     if (kind(c) === 'pot') d.querySelector('.potv')!.textContent = ((st.value ?? 0.5) * 3.3).toFixed(2) + ' V';
-    if (c.type === 'sht40') { d.querySelector('.shv')!.textContent = `${A.project.env.roomC.toFixed(1)} °C · ${A.project.env.rh}%`; const r = d.querySelector('.shr') as HTMLInputElement; if (document.activeElement !== r) r.value = String(A.project.env.roomC); }
-    if (c.type === 'neopixel') { const px = st.pixels as number[][] | null; d.querySelectorAll('.npd').forEach((x, i) => { const p = px?.[i]; x.setAttribute('fill', p && p[0] + p[1] + p[2] ? `rgb(${Math.min(255, p[0] * 1.4)},${Math.min(255, p[1] * 1.4)},${Math.min(255, p[2] * 1.4)})` : '#222'); }); }
-    if (c.type === 'tft') { (d.querySelector('.tftm') as HTMLCanvasElement).getContext('2d')!.drawImage(A.product.screen, 0, 0, 56, 56); d.querySelector('.tfts')!.textContent = st.mode === 'spi' ? `${st.commands} cmds` : st.mode === 'sim' ? 'sim' : ''; }
-    if (c.type === 'buzzer') d.querySelector('.bzv')!.textContent = st.playing ? st.freq + ' Hz' : 'silent';
-    if (c.type === 'servo') d.querySelector('.arm')!.setAttribute('transform', `rotate(${(st.angle ?? 90) - 90} 35 26)`);
-    if (c.type === 'relay') { const x = d.querySelector('.rlv') as HTMLElement; x.textContent = st.on ? 'ON' : 'OFF'; x.style.color = st.on ? 'var(--heat)' : ''; }
+    if (kind(c) === 'sht40') { d.querySelector('.shv')!.textContent = `${A.project.env.roomC.toFixed(1)} °C · ${A.project.env.rh}%`; const r = d.querySelector('.shr') as HTMLInputElement; if (document.activeElement !== r) r.value = String(A.project.env.roomC); }
+    if (kind(c) === 'neopixel') { const px = st.pixels as number[][] | null; d.querySelectorAll('.npd').forEach((x, i) => { const p = px?.[i]; x.setAttribute('fill', p && p[0] + p[1] + p[2] ? `rgb(${Math.min(255, p[0] * 1.4)},${Math.min(255, p[1] * 1.4)},${Math.min(255, p[2] * 1.4)})` : '#222'); }); }
+    if (kind(c) === 'tft') { (d.querySelector('.tftm') as HTMLCanvasElement).getContext('2d')!.drawImage(A.product.screen, 0, 0, 56, 56); d.querySelector('.tfts')!.textContent = st.mode === 'spi' ? `${st.commands} cmds` : st.mode === 'sim' ? 'sim' : ''; }
+    if (kind(c) === 'buzzer') d.querySelector('.bzv')!.textContent = st.playing ? st.freq + ' Hz' : 'silent';
+    if (kind(c) === 'servo') d.querySelector('.arm')!.setAttribute('transform', `rotate(${(st.angle ?? 90) - 90} 35 26)`);
+    if (kind(c) === 'relay') { const x = d.querySelector('.rlv') as HTMLElement; x.textContent = st.on ? 'ON' : 'OFF'; x.style.color = st.on ? 'var(--heat)' : ''; }
     if (kind(c) === 'generic') { const x = d.querySelector('.genv') as HTMLElement; x.textContent = st.rx || st.tx ? `${st.rx} in · ${st.tx} out${st.last ? ' · ' + st.last : ''}` : st.edges ? `${st.edges} edges` : 'idle'; }
-    if (c.type === 'haptic') { const x = d.querySelector('.hpv') as HTMLElement; x.textContent = st.on ? 'buzzing' : 'idle'; x.style.color = st.on ? '#9db4ff' : ''; }
+    if (kind(c) === 'haptic') { const x = d.querySelector('.hpv') as HTMLElement; x.textContent = st.on ? 'buzzing' : 'idle'; x.style.color = st.on ? '#9db4ff' : ''; }
   }
 }
 
@@ -470,30 +511,50 @@ export function applyWiring(boardId: string, comps: CompInstance[], log: [kind: 
 
 /** Add a part to the bench with sensible free pins (shared I2C bus pins are reused). */
 function addComponent(type: string) {
-  const comps = A.project.electronics.comps, def = COMPONENTS[type];
+  const e = A.project.electronics, comps = e.comps, def = COMPONENTS[type];
   if (!def) return;
   const used = new Set(comps.flatMap(c => Object.values(c.pins).filter(v => v != null) as number[]));
   const b = board(); const pins: Record<string, number | null> = {};
-  let pool = b.gpio.filter(g => !b.strap.includes(g) && !used.has(g));
+  let pool = b.gpio.filter(g => !b.strap.includes(g) && !used.has(g) && !(b.family === 'avr' && g < 2));
+  const take = (g: number | undefined) => { if (g != null) pool = pool.filter(p => p !== g); return g; };
+  // keep the hardware I2C/SPI pins (on a Pi, the only ones) for bus parts while other pins are free
+  const busPins = new Set([...(b.i2c ?? []).flatMap(g => [...(g.sda ?? []), ...(g.scl ?? [])]), ...(b.spi ?? []).flatMap(g => [...(g.sck ?? []), ...(g.mosi ?? [])])]);
+  const small = b.i2c?.every(g => (g.sda?.length ?? 0) <= 1);
+  const isOut = (k: string) => k !== 'digital-in' && k !== 'analog';
+  const bus = (kind: 'i2c' | 'spi') => {
+    // share an existing bus, else take a free hardware pair
+    const [ra, rb] = kind === 'i2c' ? ['i2c-sda', 'i2c-scl'] : ['spi-sck', 'spi-mosi'];
+    if (kind === 'i2c') for (const c of comps) { const d = COMPONENTS[c.type]; const a = d?.roles.find(x => x.kind === ra), z = d?.roles.find(x => x.kind === rb); if (a && z && c.pins[a.id] != null && c.pins[z.id] != null) return [c.pins[a.id]!, c.pins[z.id]!]; }
+    const [ka, kb] = kind === 'i2c' ? ['sda', 'scl'] as const : ['sck', 'mosi'] as const;
+    for (const gr of b[kind] ?? []) { const a = gr[ka]?.find(g => pool.includes(g) && !b.inputOnly?.includes(g)), z = gr[kb]?.find(g => pool.includes(g) && g !== a && !b.inputOnly?.includes(g)); if (a != null && z != null) return [a, z]; }
+    return null;
+  };
+  const i2c = def.roles.some(r => r.kind === 'i2c-sda') ? bus('i2c') : null, spi = def.roles.some(r => r.kind === 'spi-sck') ? bus('spi') : null;
   for (const r of def.roles) {
     let g: number | undefined;
-    if (r.kind === 'analog') g = pool.find(p => b.adc.includes(p));
-    else if (r.kind === 'i2c-sda' || r.kind === 'i2c-scl') {
-      for (const c of comps) { const role = COMPONENTS[c.type]?.roles.find(x => x.kind === r.kind); if (role && c.pins[role.id] != null) { g = c.pins[role.id] as number; break; } }
-    }
-    if (g == null) g = pool.find(p => !b.adc.includes(p)) ?? pool[0];
-    pins[r.id] = g ?? null; pool = pool.filter(p => p !== g);
+    if (r.kind === 'i2c-sda' && i2c) g = i2c[0]; else if (r.kind === 'i2c-scl' && i2c) g = i2c[1];
+    else if (r.kind === 'spi-sck' && spi) g = spi[0]; else if (r.kind === 'spi-mosi' && spi) g = spi[1];
+    else if (r.kind === 'analog') g = pool.find(p => b.adc.includes(p) && !b.adc2?.includes(p)) ?? pool.find(p => b.adc.includes(p));
+    else if (r.kind === 'pwm' && b.hwPwm) g = pool.find(p => b.hwPwm!.includes(p) && !b.adc.includes(p)) ?? pool.find(p => b.hwPwm!.includes(p));
+    const okFor = (p: number) => !(isOut(r.kind) && b.inputOnly?.includes(p));
+    if (g == null) g = pool.find(p => okFor(p) && !b.adc.includes(p) && !(small && busPins.has(p))) ?? pool.find(p => okFor(p) && !b.adc.includes(p)) ?? pool.find(okFor);
+    pins[r.id] = take(g) ?? null;
   }
   comps.push({ uid: newUid(), type: def.id, pins, color: nextColor(comps.length) });
   track('part', `Added a ${def.name}`);
-  wiringChanged(); toast(def.name + ' added');
+  // its driver, if your code is your own (otherwise the regenerated starter includes it)
+  const libs = Object.entries(libsFor(b, [comps[comps.length - 1]])).filter(([f]) => e.files[f] == null);
+  if (e.filesEdited && libs.length) { for (const [f, src] of libs) e.files[f] = src; renderTabs(); }
+  wiringChanged();
+  const missing = def.roles.filter(r => pins[r.id] == null).map(r => r.id);
+  toast(def.name + ' added' + (missing.length ? ` (no free pin for ${missing.join(', ')})` : libs.length && e.filesEdited ? ` with its driver ${libs.map(l => l[0]).join(', ')}` : ''));
 }
 
 // ------------------------------------------------------------------ public
 export function initElec(app: App) {
   A = app;
   ensureRuntimes();
-  $('#board').innerHTML = Object.values(BOARDS).map(b => `<option value="${b.id}">${esc(b.name)} · ${b.fidelity === 'emulated' ? 'emulated' : 'sim'}</option>`).join('');
+  $('#board').innerHTML = boardOptions(b => `${b.name} · ${b.fidelity === 'emulated' ? 'emulated' : 'sim'}`);
   initParts(A, addComponent);
   renderLib();
   $('#board').onchange = e => {

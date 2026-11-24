@@ -26,13 +26,35 @@ Requires Node 20+. Chrome or Edge is recommended (Web Serial and folder save use
 
 | Board | Language | How it runs | Fidelity |
 |---|---|---|---|
-| Raspberry Pi Pico / Pico W | MicroPython | **Real MicroPython v1.24.1 firmware** on an emulated RP2040 ([rp2040js](https://github.com/wokwi/rp2040js)). GPIO, PWM, PIO, SPI (+DMA), I2C, ADC and USB-CDC are bridged to virtual parts. | Cycle-level |
-| Arduino Uno R3 | Arduino C++ | Compiled with avr-gcc or arduino-cli, run on an emulated ATmega328P ([avr8js](https://github.com/wokwi/avr8js)). Timers, GPIO, USART, SPI, TWI, ADC. | Cycle-level |
-| ESP32-S3, ESP32-C3 | MicroPython | Behavioral simulation of the `machine` API (Skulpt). No browser ESP32 emulator exists. | Behavioral |
-| Raspberry Pi 5 / Zero 2 W | Python 3 | Behavioral simulation of `gpiozero`, `smbus2`, Adafruit `neopixel`. | Behavioral |
+| Raspberry Pi Pico / Pico W, Seeed XIAO RP2040, Adafruit QT Py RP2040, Adafruit Feather RP2040, Waveshare RP2040-Zero | MicroPython | **Real MicroPython v1.24.1 firmware** on an emulated RP2040 ([rp2040js](https://github.com/wokwi/rp2040js)). GPIO, PWM, PIO, SPI (+DMA), I2C, ADC and USB-CDC are bridged to virtual parts, on every pin the chip can mux them to. | Cycle-level |
+| Arduino Uno R3, Arduino Nano, Arduino Pro Mini 5 V | Arduino C++ | Compiled with avr-gcc or arduino-cli, run on an emulated ATmega328P ([avr8js](https://github.com/wokwi/avr8js)). Timers, GPIO, USART, SPI, TWI, ADC. | Cycle-level |
+| Raspberry Pi Pico 2 / 2 W | MicroPython | Behavioral simulation (no RP2350 emulator yet). Same pinout and code as the Pico. | Behavioral |
+| ESP32 DevKitC, ESP32-S3 DevKitC-1, Seeed XIAO ESP32-S3, Arduino Nano ESP32, ESP32-C3 SuperMini, ESP32-C6, Wemos S2 Mini, NodeMCU / Wemos D1 mini (ESP8266) | MicroPython | Behavioral simulation of the `machine` API (Skulpt). No browser ESP32 emulator exists. Input-only pins, ADC2/Wi-Fi and boot pins are checked. | Behavioral |
+| Raspberry Pi 5, 4 B, 3 B+, Zero 2 W | Python 3 | Behavioral simulation of `gpiozero`, `smbus2`, Adafruit `neopixel`. | Behavioral |
 | **Physical board** | MicroPython | Any real MicroPython board over **Web Serial**: files written via raw REPL (like `mpremote`), soft reset, serial monitor. `lib/ff.py` mirrors the board onto the 3D model and forwards 3D dial and press input to it. | Real hardware |
 
 Virtual parts speak the real protocols, not mocks. For example, the NeoPixel ring decodes WS2812 timing from pin edges, the GC9A01 decodes SPI `CASET/RASET/RAMWR`, and the SHT40 answers I2C 0x44 with CRC-checked frames. That's why the same `main.py` and drivers run unchanged on a real Pico.
+
+### Parts
+
+43 parts in five groups (search the **Add component** list):
+
+- **Buttons, switches & knobs:** push button, slide switch, limit switch, TTP223 touch, rotary encoder, potentiometer, slide pot, thumb joystick.
+- **Sensors:** SHT40, AHT20, TMP36, BH1750 light, MPU-6050 IMU, HC-SR04 ultrasonic, PIR motion, tilt, reed, IR obstacle, LDR, soil moisture, force (FSR), MQ-2 gas.
+- **Displays:** GC9A01 round LCD, SSD1306 OLED, 16x2 LCD (I2C backpack), TM1637 7-segment.
+- **Lights & sound:** NeoPixel ring, red/green/blue/yellow/white LEDs, RGB LED, laser, piezo buzzer.
+- **Motors, relays & power:** SG90 servo, 28BYJ-48 stepper (ULN2003), DC motor (L9110S), fan, pump, relay, solenoid, haptic motor.
+
+Each one has a device model that speaks the real part's protocol:
+- the OLED decodes the SSD1306 command set and GDDRAM writes
+- the LCD decodes HD44780 nibbles through the PCF8574 backpack
+- the 7-segment decodes TM1637 start/stop frames from pin edges
+- the stepper counts half steps from the coil pattern
+- the HC-SR04 answers a trigger pulse with a timed echo
+
+Displays draw onto the product's screen. Auto build cuts a correctly sized window for them.
+
+In a blank project, adding parts writes a demo program for all of them in the board's language (MicroPython, Python with gpiozero, or Arduino C++). MicroPython drivers (`lib/ssd1306.py`, `lib/i2c_lcd.py`, `lib/tm1637.py`, `lib/hcsr04.py`, `lib/mpu6050.py`, `lib/aht20.py`, `lib/bh1750.py`, `lib/stepper.py`) are added with their part. They are plain MicroPython, so they run on the emulated Pico, in the simulator and on a real board. To add your own board or part, see `src/hw/library/boards.ts`, `components.ts` and `src/hw/devices/parts.ts`.
 
 ### The emulator runs slower than real time
 

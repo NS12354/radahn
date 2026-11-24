@@ -1,4 +1,5 @@
 import type { CompInstance } from '../hw/types';
+import { demoFiles, libsFor } from '../hw/partcode';
 import { BOARDS, KIT_PRESETS } from '../hw/library/boards';
 import { COMPONENTS, KIT } from '../hw/library/components';
 import { blankFiles, defaultFiles } from '../hw/templates';
@@ -185,7 +186,7 @@ export function defaultProject(): Project {
 
 /** Starter code for the project's board, following its starter kind. */
 export function starterFiles(b: BoardDef, e: Project['electronics']): Record<string, string> {
-  return e.starter === 'blank' ? blankFiles(b) : defaultFiles(b, e.comps);
+  return e.starter === 'blank' ? demoFiles(b, e.comps) ?? blankFiles(b) : { ...defaultFiles(b, e.comps), ...libsFor(b, e.comps) };
 }
 
 /** A truly empty project: no model, no parts, no interactions, a skeleton code file. */

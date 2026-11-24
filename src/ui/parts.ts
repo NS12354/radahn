@@ -122,6 +122,21 @@ function renderReview() {
   };
 }
 
+/** Show only the parts whose name, id or notes match; hide empty sections. */
+function filterLib(q: string) {
+  const words = q.toLowerCase().split(' ').filter(Boolean);
+  let head: HTMLElement | null = null, shown = 0;
+  const flush = () => { if (head) head.style.display = shown ? '' : 'none'; };
+  for (const n of Array.from($('#libList').children) as HTMLElement[]) {
+    if (n.tagName === 'H4') { flush(); head = n; shown = 0; continue; }
+    const hay = (n.textContent + ' ' + (n.dataset.t ?? '') + ' ' + (n.title ?? '')).toLowerCase();
+    const ok = words.every(w => hay.includes(w));
+    n.style.display = ok ? '' : 'none';
+    if (ok) shown++;
+  }
+  flush();
+}
+
 /** The "Add component" list: built-in parts, then parts from this project and your library. */
 export function renderLib() {
   const builtIn = Object.values(COMPONENTS).filter(d => !(d as any).custom);
@@ -129,7 +144,19 @@ export function renderLib() {
   for (const s of Object.values(A.project.electronics.custom ?? {})) mine.set(s.id, s);
   for (const s of libraryParts()) if (!mine.has(s.id)) mine.set(s.id, s);
   const lib = $('#libList'); lib.innerHTML = '';
-  for (const l of builtIn) lib.appendChild(btn(l.id, `${esc(l.name)}<span>$${l.cost.toFixed(2)}${l.binds ? ' · ⇄ ' + l.bindLabel : ''}</span>`, ''));
+  const GROUPS: [string, string][] = [['input', 'Buttons, switches & knobs'], ['sensor', 'Sensors'], ['display', 'Displays'], ['output', 'Lights & sound'], ['actuator', 'Motors, relays & power']];
+  for (const [cat, title] of GROUPS) {
+    const ls = builtIn.filter(l => (l.group ?? l.category) === cat);
+    if (!ls.length) continue;
+    lib.appendChild(el('h4', 'libh', `${esc(title)} <span>${ls.length}</span>`));
+    for (const l of ls) { const b = btn(l.id, `${esc(l.name)}<span>$${l.cost.toFixed(2)}${l.binds ? ' · ⇄ ' + l.bindLabel : ''}</span>`, ''); if (l.note) b.title = l.note; lib.appendChild(b); }
+  }
+  if (!document.getElementById('libFind')) {
+    const f = el('input', 'libfind') as HTMLInputElement; f.id = 'libFind'; f.type = 'search'; f.placeholder = `Search ${builtIn.length} parts…`;
+    f.oninput = () => filterLib(f.value);
+    lib.parentElement!.insertBefore(f, lib);
+  }
+  if (mine.size) lib.appendChild(el('h4', 'libh', `Imported <span>${mine.size}</span>`));
   for (const s of mine.values()) {
     const inLib = libraryParts().some(p => p.id === s.id);
     const b = btn(s.id, `${inLib ? '<span class="rm" title="Remove from my library">✕</span>' : ''}${esc(s.name)}<span>$${s.cost.toFixed(2)} · ${esc(s.interface)}${s.url ? ' · ↗' : ''}</span>`, 'cust');
@@ -137,6 +164,7 @@ export function renderLib() {
     lib.appendChild(b);
   }
   $('#linkNote').textContent = mine.size ? `${mine.size} imported` : '';
+  filterLib((document.getElementById('libFind') as HTMLInputElement | null)?.value ?? '');
   function btn(id: string, html: string, cls: string) {
     const b = el('button', cls, html); b.dataset.t = id;
     b.onclick = e => {

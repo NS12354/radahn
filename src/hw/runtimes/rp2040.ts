@@ -4,7 +4,7 @@ import { bootromB1 } from '../emu/rp2040/bootrom';
 import type { Bench } from '../bench';
 import type { I2CTarget, Level, Runtime } from '../types';
 import { RawRepl } from '../repl';
-import { BOARDS } from '../library/boards';
+import { RP2_I2C, RP2_SPI } from '../library/boards';
 import { nextTick, SpeedMeter } from './scheduler';
 
 const FUNC_SPI = 1, FUNC_I2C = 3;
@@ -92,7 +92,7 @@ export class RP2040Runtime implements Runtime {
         else if (state === GPIOPinState.Low) b.pin(g, 0, this.clock.nanos);
       }));
     });
-    const board = BOARDS.picow;
+    const board = { spi: RP2_SPI, i2c: RP2_I2C }; // the chip's full pin-mux tables (any RP2040 board)
     const muxed = (pins: number[] | undefined, fn: number) => pins?.find(p => mcu.gpio[p].functionSelect === fn) ?? -1;
     mcu.spi.forEach((spi, i) => {
       // Complete each byte after its real transfer time (async, like the hardware):

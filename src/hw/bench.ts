@@ -44,6 +44,7 @@ export class Bench {
         product: this.product,
         isBound: () => slot.bound,
         env: this.env,
+        logicV: board.logicV,
         log: (m, l) => this.warn(c.uid + m, m, l),
         readPin: role => { const g = c.pins[role]; return g == null || !this.runtime ? 1 : this.runtime.readOutput(g); },
       });

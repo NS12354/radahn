@@ -1,5 +1,5 @@
 import { $, el, esc } from './dom';
-import { BOARDS } from '../hw/library/boards';
+import { BOARDS, boardOptions } from '../hw/library/boards';
 import { listProjects, persistent, type ProjectMeta } from '../app/store';
 
 /** Actions the home screen asks the app to perform. */
@@ -28,7 +28,7 @@ function ago(t: number) {
 
 export function initHome(h: HomeHost) {
   host = h;
-  $('#homeBoard').innerHTML = Object.values(BOARDS).map(b => `<option value="${b.id}">${esc(b.name)}</option>`).join('');
+  $('#homeBoard').innerHTML = boardOptions();
   $('#hBlank').onclick = e => { if ((e.target as HTMLElement).closest('select')) return; host.newBlank(($('#homeBoard') as HTMLSelectElement).value); };
   $('#hExample').onclick = () => host.newExample();
   $('#hOpen').onclick = () => host.openFile();

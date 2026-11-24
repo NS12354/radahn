@@ -258,7 +258,7 @@ MPY_LIBS['lib/ff.py'] = FF_PY;
 export function mpyMain(b: BoardDef, comps: CompInstance[]) {
   const P = pinsOf(comps);
   const sda = P('sht40', 'SDA', 4), scl = P('sht40', 'SCL', 5), sck = P('tft', 'SCK', 10), mosi = P('tft', 'MOSI', 11);
-  const rot = b.family === 'rp2040' ? 'rotary_irq_rp2' : 'rotary_irq_esp';
+  const rot = b.runtime === 'rp2040-emu' ? 'rotary_irq_rp2' : 'rotary_irq_esp';
   return `# Thermostat firmware: MicroPython on ${b.name}
 # Run, then turn the dial and press the display on the 3D model.
 # The same files run unchanged on a real board ("Physical board" → Run).

@@ -25,6 +25,7 @@ const CACHE = path.join(os.tmpdir(), 'formframe-avr-cache');
 export const BOARDS = {
   uno:  { mcu: 'atmega328p', fcpu: '16000000L', variant: 'standard', define: 'ARDUINO_AVR_UNO',  fqbn: 'arduino:avr:uno' },
   nano: { mcu: 'atmega328p', fcpu: '16000000L', variant: 'eightanaloginputs', define: 'ARDUINO_AVR_NANO', fqbn: 'arduino:avr:nano' },
+  promini: { mcu: 'atmega328p', fcpu: '16000000L', variant: 'eightanaloginputs', define: 'ARDUINO_AVR_PRO', fqbn: 'arduino:avr:pro:cpu=16MHzatmega328' },
 };
 
 async function has(cmd) {

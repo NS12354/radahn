@@ -64,7 +64,7 @@ export function autoBuild(board: BoardDef, comps: CompInstance[], o: AutoBuildOp
   [...of('pot'), ...custom('pot'), ...custom('knob')].forEach(c => push(c, 'pot', 18));
   [...of('led'), ...custom('indicator')].forEach(c => push(c, 'indicator', 8));
   custom('button').forEach(c => push(c, 'button', 15));
-  custom('display').forEach(c => push(c, 'display', 38));
+  custom('display').forEach(c => { const w = partPhys(c.type).window; push(c, 'display', w ? Math.max(w[0], w[1]) + 6 : 38); });
   tfts.slice(1).forEach(c => push(c, 'display', 38));
   const FRONT = new Set(['tft', 'encoder', 'button', 'pot', 'led']);
   const onFront = new Set(sec.map(s => s.c));
@@ -214,6 +214,10 @@ export function autoBuild(board: BoardDef, comps: CompInstance[], o: AutoBuildOp
       add({ name: 'Sound port', shape: 'cyl', size: [1.6, 1.6, 0.6], pos: [s.x, s.y + 3.5, surf + 0.3], array: { n: 6, mode: 'radial', center: [s.x, s.y] }, color: HOLE, layer: 3, comp: s.c.uid });
       add({ name: 'Sound port (centre)', shape: 'cyl', size: [1.6, 1.6, 0.6], pos: [s.x, s.y, surf + 0.3], color: HOLE, layer: 3, comp: s.c.uid });
       notes.push(`${nameOf(s.c)} → 7-hole sound port in front of it.`);
+    } else if (s.kind === 'display' && partPhys(s.c.type).window) {
+      const [ww, wh] = partPhys(s.c.type).window!, main = !display && s === sec.find(x => x.kind === 'display');
+      add({ name: `${nameOf(s.c).split(' (')[0]} window`, shape: 'rect', size: [ww, wh, 0.3], pos: [s.x, s.y, surf + 0.15], ...(main ? { role: 'screen' as const } : {}), color: '#000000', finish: 'gloss', layer: 3, comp: s.c.uid });
+      notes.push(main ? `${nameOf(s.c)} → ${r1(ww)} × ${r1(wh)} mm window. It is the Screen, so the firmware draws on it.` : `${nameOf(s.c)} → ${r1(ww)} × ${r1(wh)} mm window (a second display; the screen shows on the first one).`);
     } else if (s.kind === 'display') {
       add({ name: 'Second display', shape: 'disc', size: [active, active, 0.3], pos: [s.x, s.y, surf + 0.15], color: '#000000', finish: 'gloss', layer: 3, comp: s.c.uid });
       add({ name: 'Second display bezel', shape: 'tube', size: [bezelD || active + 5, bezelD || active + 5, 1.2], pos: [s.x, s.y, surf + 0.6], param: active + 0.4, color: '#202226', finish: 'satin', layer: 3, comp: s.c.uid });

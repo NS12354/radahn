@@ -40,6 +40,7 @@ export function runChecks(board: BoardDef, comps: CompInstance[]): Check[] {
       const g = c.pins[r.id];
       if (g == null) { out.push({ level: 'warn', uid: c.uid, msg: `${def.name}: ${r.id} is not connected.` }); continue; }
       if (!board.gpio.includes(g)) { out.push({ level: 'err', uid: c.uid, msg: `${def.name}: ${label(g)} doesn't exist on ${board.name}.` }); continue; }
+      if (board.inputOnly?.includes(g) && r.kind !== 'digital-in' && r.kind !== 'analog') out.push({ level: 'err', uid: c.uid, msg: `${def.name}: ${label(g)} is input-only on ${board.name}, so it can't drive ${r.id}.` });
       if (board.strap.includes(g)) out.push({ level: 'warn', uid: c.uid, msg: `${def.name} on ${label(g)}: strapping pin, so the board may not boot with a load attached.` });
       if (board.family === 'avr' && (g === 0 || g === 1)) out.push({ level: 'warn', uid: c.uid, msg: `${def.name} on ${label(g)} shares the USB serial pins. Uploads and Serial will conflict.` });
       if (r.kind === 'analog') {

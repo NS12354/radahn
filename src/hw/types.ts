@@ -3,7 +3,7 @@
 export type Level = 0 | 1;
 export type Lang = 'micropython' | 'python' | 'arduino';
 export type RuntimeKind = 'rp2040-emu' | 'avr-emu' | 'sim-python' | 'serial-device';
-export type Family = 'rp2040' | 'avr' | 'esp32' | 'pi';
+export type Family = 'rp2040' | 'rp2350' | 'avr' | 'esp32' | 'esp8266' | 'pi';
 
 /** Things on the 3D product that electronics can drive or be driven by. */
 export type ProductRole = 'dial' | 'press' | 'screen' | 'ledRing' | 'ambient' | 'heater' | 'haptic';
@@ -29,6 +29,10 @@ export interface BoardDef {
   spi?: PinGroup[];
   i2c?: PinGroup[];
   hwPwm?: number[];
+  /** Pins that can only read (e.g. ESP32 GPIO 34-39). */
+  inputOnly?: number[];
+  /** MicroPython ADC channel → pin, for boards whose ADC(n) isn't a GPIO number (ESP8266 ADC(0) = A0). */
+  adcAlias?: Record<number, number>;
   /** Label override, e.g. AVR digital pins D0..D13, A0..A5. */
   label?: (g: number) => string;
   pinMaxmA: number;
@@ -89,6 +93,8 @@ export interface DeviceCtx {
   product: ProductIO | null;
   isBound(): boolean;
   env: Env;
+  /** Board logic voltage: the full-scale voltage for analog sensors. */
+  logicV: number;
   log(msg: string, level?: 'w' | 'e'): void;
   readPin(role: string): Level;
 }
@@ -111,6 +117,8 @@ export interface DeviceModel {
   adc?(role: string): number;
   /** High-level hooks used by the behavioral Python runtime. */
   sim?: Record<string, (...args: any[]) => any>;
+  /** Native picture of a display (OLED, LCD, 7-segment), redrawn when it changes. */
+  view?(): HTMLCanvasElement | OffscreenCanvas | null;
   reset?(): void;
   /** Called every animation frame for decay/visual state. */
   frame?(dtSec: number): void;
@@ -133,7 +141,16 @@ export interface ComponentDef {
   logic?: 3.3 | 5;
   cost: number;
   i2cAddress?: number;
-  ui: 'led' | 'button' | 'encoder' | 'pot' | 'sensor' | 'ring' | 'screen' | 'buzzer' | 'servo' | 'relay' | 'haptic';
+  ui: 'led' | 'button' | 'encoder' | 'pot' | 'sensor' | 'ring' | 'screen' | 'buzzer' | 'servo' | 'relay' | 'haptic'
+    | 'toggle' | 'meter' | 'joystick' | 'rgb' | 'motor' | 'stepper' | 'distance' | 'imu' | 'display';
+  /** Library section (defaults from category). */
+  group?: string;
+  /** LED colour, for indicator LEDs. */
+  tint?: string;
+  /** What the bench card says when it's on, e.g. "pumping" (relay/motor cards). */
+  onText?: string;
+  /** Slider on the bench card for analog sensors: a physical value and the voltage it produces. */
+  reading?: { label: string; unit: string; min: number; max: number; dflt: number; step?: number; volts?: (x: number, vcc: number) => number };
   /** Fidelity notes shown on the card. */
   note?: string;
   create(ctx: DeviceCtx): DeviceModel;

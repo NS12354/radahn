@@ -1,6 +1,7 @@
 import type { Bench } from '../bench';
 import type { Level, Runtime } from '../types';
 import { MPY_LIBS } from '../templates';
+import { PART_LIBS } from '../partcode';
 
 declare const Sk: any;
 
@@ -201,9 +202,30 @@ class I2C:
         if r is None:
             raise OSError(19)
         return r
+    def writevto(self, addr, vector, stop=True):
+        flat = []
+        for v in vector:
+            flat.extend(list(v))
+        _hw('i2c_w', self.sda, self.scl, addr, flat)
+        return len(flat)
+    def readfrom_into(self, addr, buf, stop=True):
+        r = self.readfrom(addr, len(buf))
+        for i in range(len(buf)):
+            buf[i] = r[i]
+    def writeto_mem(self, addr, reg, buf, addrsize=8):
+        self.writeto(addr, [reg] + list(buf))
+    def readfrom_mem(self, addr, reg, n, addrsize=8):
+        self.writeto(addr, [reg])
+        return self.readfrom(addr, n)
+    def readfrom_mem_into(self, addr, reg, buf, addrsize=8):
+        self.writeto(addr, [reg])
+        self.readfrom_into(addr, buf)
     def scan(self):
         return _hw('i2c_scan', self.sda, self.scl)
 SoftI2C = I2C
+def time_pulse_us(pin, level, timeout_us=1000000):
+    _service()
+    return _hw('pulse_in', pin.id if isinstance(pin, Pin) else pin, level, timeout_us)
 def freq(f=None):
     return 240000000
 def reset():
@@ -345,6 +367,139 @@ def haptic(on):
 def events():
     return []
 `,
+  framebuf: `# framebuf for the behavioral sim (MicroPython's is built in C). Same API.
+MONO_VLSB = 0
+RGB565 = 1
+GS4_HMSB = 2
+MONO_HLSB = 3
+MONO_HMSB = 4
+GS8 = 6
+MVLSB = 0
+class FrameBuffer:
+    def __init__(self, buf, width, height, format=0, stride=None):
+        self.buf = buf
+        self.width = width
+        self.height = height
+        self.format = format
+        self.stride = stride if stride else width
+    def pixel(self, x, y, c=None):
+        if x < 0 or y < 0 or x >= self.width or y >= self.height:
+            return None if c is None else None
+        f = self.format
+        if f == 0:
+            i = (y >> 3) * self.stride + x
+            m = 1 << (y & 7)
+            if c is None:
+                return 1 if self.buf[i] & m else 0
+            self.buf[i] = (self.buf[i] | m) if c else (self.buf[i] & (255 - m))
+        elif f == 3 or f == 4:
+            i = (y * self.stride + x) >> 3
+            m = (0x80 >> (x & 7)) if f == 3 else (1 << (x & 7))
+            if c is None:
+                return 1 if self.buf[i] & m else 0
+            self.buf[i] = (self.buf[i] | m) if c else (self.buf[i] & (255 - m))
+        elif f == 1:
+            i = (y * self.stride + x) * 2
+            if c is None:
+                return self.buf[i] | (self.buf[i + 1] << 8)
+            self.buf[i] = c & 255
+            self.buf[i + 1] = (c >> 8) & 255
+        else:
+            i = y * self.stride + x
+            if c is None:
+                return self.buf[i]
+            self.buf[i] = c & 255
+    def fill(self, c):
+        if self.format in (0, 3, 4):
+            v = 255 if c else 0
+            for i in range(len(self.buf)):
+                self.buf[i] = v
+        else:
+            self.fill_rect(0, 0, self.width, self.height, c)
+    def fill_rect(self, x, y, w, h, c):
+        x0 = max(0, x)
+        y0 = max(0, y)
+        x1 = min(self.width, x + w)
+        y1 = min(self.height, y + h)
+        if x0 >= x1 or y0 >= y1:
+            return
+        if self.format == 0:
+            for p in range(y0 >> 3, ((y1 - 1) >> 3) + 1):
+                m = 0
+                for b in range(8):
+                    yy = p * 8 + b
+                    if yy >= y0 and yy < y1:
+                        m |= 1 << b
+                base = p * self.stride
+                for xx in range(x0, x1):
+                    self.buf[base + xx] = (self.buf[base + xx] | m) if c else (self.buf[base + xx] & (255 - m))
+            return
+        for yy in range(y0, y1):
+            for xx in range(x0, x1):
+                self.pixel(xx, yy, c)
+    def hline(self, x, y, w, c):
+        self.fill_rect(x, y, w, 1, c)
+    def vline(self, x, y, h, c):
+        self.fill_rect(x, y, 1, h, c)
+    def rect(self, x, y, w, h, c, f=False):
+        if f:
+            self.fill_rect(x, y, w, h, c)
+            return
+        self.fill_rect(x, y, w, 1, c)
+        self.fill_rect(x, y + h - 1, w, 1, c)
+        self.fill_rect(x, y, 1, h, c)
+        self.fill_rect(x + w - 1, y, 1, h, c)
+    def line(self, x0, y0, x1, y1, c):
+        dx = abs(x1 - x0)
+        dy = -abs(y1 - y0)
+        sx = 1 if x0 < x1 else -1
+        sy = 1 if y0 < y1 else -1
+        e = dx + dy
+        while True:
+            self.pixel(x0, y0, c)
+            if x0 == x1 and y0 == y1:
+                break
+            e2 = 2 * e
+            if e2 >= dy:
+                e += dy
+                x0 += sx
+            if e2 <= dx:
+                e += dx
+                y0 += sy
+    def ellipse(self, cx, cy, xr, yr, c, f=False, m=15):
+        for yy in range(-yr, yr + 1):
+            for xx in range(-xr, xr + 1):
+                d = (xx * xx) / max(1, xr * xr) + (yy * yy) / max(1, yr * yr)
+                if d <= 1 and (f or d >= 1 - 2.2 / max(1, min(xr, yr))):
+                    self.pixel(cx + xx, cy + yy, c)
+    def text(self, s, x, y, c=1):
+        g = _hw('glyphs', str(s))
+        for i in range(len(g)):
+            cols = g[i]
+            for j in range(len(cols)):
+                b = cols[j]
+                if b:
+                    for k in range(8):
+                        if b & (1 << k):
+                            self.pixel(x + i * 8 + j, y + k, c)
+    def scroll(self, dx, dy):
+        w = self.width
+        h = self.height
+        old = [[self.pixel(xx, yy) for xx in range(w)] for yy in range(h)]
+        for yy in range(h):
+            for xx in range(w):
+                sx = xx - dx
+                sy = yy - dy
+                if sx >= 0 and sy >= 0 and sx < w and sy < h:
+                    self.pixel(xx, yy, old[sy][sx])
+    def blit(self, fb, x, y, key=-1, palette=None):
+        for yy in range(fb.height):
+            for xx in range(fb.width):
+                v = fb.pixel(xx, yy)
+                if v != key:
+                    self.pixel(x + xx, y + yy, v)
+FrameBuffer1 = FrameBuffer
+`,
   signal: `def pause():
     import time
     while True:
@@ -441,6 +596,135 @@ class Servo:
         self._set(0)
     def max(self):
         self._set(1)
+class DigitalInputDevice:
+    def __init__(self, pin, pull_up=False, active_state=None, bounce_time=None, **k):
+        self.pin = _pin(pin)
+        self.pull_up = pull_up
+        self._hi = True if active_state is None and not pull_up else (active_state if active_state is not None else False)
+        self.when_activated = None
+        self.when_deactivated = None
+        _hw('pin_mode', self.pin, 0, 1 if pull_up else -1)
+        d = self
+        def l(e):
+            if e[0] == 'pin' and e[1] == d.pin:
+                on = (e[2] == 'rise') == d._hi
+                f = d.when_activated if on else d.when_deactivated
+                if f:
+                    _call(f, d)
+        listeners.append(l)
+    @property
+    def value(self):
+        v = _hw('pin_read', self.pin)
+        return 1 if (v == 1) == self._hi else 0
+    @property
+    def is_active(self):
+        return bool(self.value)
+    def wait_for_active(self, timeout=None):
+        import time
+        while not self.is_active:
+            time.sleep(0.01)
+    def wait_for_inactive(self, timeout=None):
+        import time
+        while self.is_active:
+            time.sleep(0.01)
+class MotionSensor(DigitalInputDevice):
+    def __init__(self, pin, **k):
+        DigitalInputDevice.__init__(self, pin, pull_up=False)
+        self.when_motion = None
+        self.when_no_motion = None
+        d = self
+        def l(e):
+            if e[0] == 'pin' and e[1] == d.pin:
+                f = d.when_motion if e[2] == 'rise' else d.when_no_motion
+                if f:
+                    _call(f, d)
+        listeners.append(l)
+    @property
+    def motion_detected(self):
+        return self.is_active
+    def wait_for_motion(self, timeout=None):
+        self.wait_for_active()
+    def wait_for_no_motion(self, timeout=None):
+        self.wait_for_inactive()
+class LineSensor(DigitalInputDevice):
+    def __init__(self, pin, **k):
+        DigitalInputDevice.__init__(self, pin, pull_up=False, active_state=False)
+class DistanceSensor:
+    def __init__(self, echo, trigger, max_distance=1, **k):
+        self.echo = _pin(echo)
+        self.trigger = _pin(trigger)
+        self.max_distance = max_distance
+        _hw('pin_mode', self.trigger, 1, -1)
+        _hw('pin_mode', self.echo, 0, -1)
+    @property
+    def distance(self):
+        _hw('pin_write', self.trigger, 1)
+        _hw('pin_write', self.trigger, 0)
+        us = _hw('pulse_in', self.echo, 1, 100000)
+        if us < 0:
+            return self.max_distance
+        return min(self.max_distance, us / 58.3 / 100)
+    @property
+    def value(self):
+        return self.distance / self.max_distance
+class Motor:
+    def __init__(self, forward, backward=None, pwm=True, **k):
+        self.f = PWMOutputDevice(forward, frequency=1000)
+        self.b = PWMOutputDevice(backward, frequency=1000) if backward is not None else None
+        self._v = 0
+    def forward(self, speed=1):
+        self._v = speed
+        if self.b:
+            self.b.value = 0
+        self.f.value = speed
+    def backward(self, speed=1):
+        self._v = -speed
+        self.f.value = 0
+        if self.b:
+            self.b.value = speed
+    def stop(self):
+        self._v = 0
+        self.f.value = 0
+        if self.b:
+            self.b.value = 0
+    def reverse(self):
+        if self._v > 0:
+            self.backward(self._v)
+        else:
+            self.forward(-self._v)
+    @property
+    def value(self):
+        return self._v
+    @value.setter
+    def value(self, v):
+        if v >= 0:
+            self.forward(v)
+        else:
+            self.backward(-v)
+    @property
+    def is_active(self):
+        return self._v != 0
+class RGBLED:
+    def __init__(self, red, green, blue, active_high=True, initial_value=(0, 0, 0), pwm=True, **k):
+        self._p = [PWMOutputDevice(red), PWMOutputDevice(green), PWMOutputDevice(blue)]
+        self.color = initial_value
+    @property
+    def color(self):
+        return tuple(p.value for p in self._p)
+    @color.setter
+    def color(self, c):
+        for p, v in zip(self._p, c):
+            p.value = v
+    @property
+    def value(self):
+        return self.color
+    @value.setter
+    def value(self, c):
+        self.color = c
+    def on(self):
+        self.color = (1, 1, 1)
+    def off(self):
+        self.color = (0, 0, 0)
 class Button:
     def __init__(self, pin, pull_up=True, bounce_time=None, hold_time=1, **k):
         self.pin = _pin(pin)
@@ -513,6 +797,18 @@ class RotaryEncoder:
 };
 for (const [n, w, h] of [['vga1_8x16', 8, 16], ['vga1_16x32', 16, 32], ['vga1_bold_16x32', 16, 32], ['vga2_8x16', 8, 16]] as const) SHIMS[n] = `WIDTH = ${w}\nHEIGHT = ${h}\n`;
 
+/** Classic 5x7 ASCII font (0x20-0x7E), one byte per column, bit 0 = top: the shape framebuf.text draws in the sim. */
+const FONT5X7 = '000000000000005F00000007000700147F147F14242A7F2A12231308646236495522500005030000001C2241000041221C00082A1C2A0808083E080800503000000808080808006060000020100804023E5149453E00427F400042615149462141454B311814127F1027454545393C4A49493001710905033649494936064949291E00363600000056360000081422410014141414140041221408020151090632497941367E1111117E7F494949363E414141227F4141221C7F494949417F090901013E414151327F0808087F00417F41002040413F017F081422417F404040407F0204027F7F0408107F3E4141413E7F090909063E4151215E7F09192946464949493101017F01013F4040403F1F2040201F7F2018207F631408146303047804036151494543007F41410002040810200041417F0004020102044040404040000102040020545454787F484444383844444420384444487F3854545418087E090102081454543C7F0804047800447D40002040443D00007F10284400417F40007C041804787C0804047838444444387C14141408081414187C7C080404084854545420043F4440203C4040207C1C2040201C3C4030403C44281028440C5050503C4464544C44000836410000007F000000413608000201020402';
+/** 8 column bytes per character, glyph in columns 1-5 of an 8x8 cell (like MicroPython's built-in 8x8 font). */
+export function glyphs(s: string): number[][] {
+  return [...s].map(ch => {
+    const c = ch.charCodeAt(0), cols = new Array(8).fill(0);
+    if (c < 0x20 || c > 0x7e) return cols;
+    for (let k = 0; k < 5; k++) cols[k + 1] = parseInt(FONT5X7.substr((c - 0x20) * 10 + k * 2, 2), 16);
+    return cols;
+  });
+}
+
 export class SimPythonRuntime implements Runtime {
   readonly kind = 'sim-python' as const;
   running = false;
@@ -539,6 +835,7 @@ export class SimPythonRuntime implements Runtime {
   private warn(key: string, msg: string) { if (!this.warned.has(key)) { this.warned.add(key); this.onSerial(`\r\n[sim] ${msg}\r\n`); } }
   private label(g: number) { return this.bench.label(g); }
   private wired(g: number, what: string) {
+    if (g == null) { this.warn('none' + what, `Your code uses Pin(None) for an ${what}: that part isn't wired to a pin yet. Pick a pin for it on the bench.`); return false; }
     if (!this.bench.board.gpio.includes(g)) { this.warn('nx' + g, `${this.label(g)} isn't a usable pin on ${this.bench.board.name}.`); return false; }
     if (!this.bench.pinMap.get(g)) { this.warn('nc' + g, `${this.label(g)} (${what}) isn't connected to any component.`); return false; }
     return true;
@@ -576,20 +873,20 @@ export class SimPythonRuntime implements Runtime {
       }
       case 'pwm': {
         const [g, f, d] = a; this.wired(g, 'PWM');
-        for (const u of b.pinMap.get(g) ?? []) b.model(u.c.uid)?.sim?.pwm?.(f, d / 65535);
+        for (const u of b.pinMap.get(g) ?? []) b.model(u.c.uid)?.sim?.pwm?.(f, d / 65535, u.role);
         const servo = this.at(g, 'servo');
         if (servo && (f < 40 || f > 60)) this.warn('sf' + g, `Servo on ${this.label(g)} expects 50 Hz PWM, got ${f} Hz.`);
         if (servo && b.board.family === 'pi' && !b.board.hwPwm?.includes(g)) this.warn('sp' + g, `Software PWM on ${this.label(g)} will make the servo jitter. Hardware PWM: 12, 13, 18, 19.`);
         return null;
       }
       case 'adc_init': {
-        const g = a[0], bd = b.board;
+        const bd = b.board, g = bd.adcAlias?.[a[0]] ?? a[0];
         if (!bd.adc.length) this.warn('noadc', `${bd.name} has no analog inputs. Add an external ADC (e.g. MCP3008).`);
         else if (bd.adc2?.includes(g)) this.warn('adc2' + g, `${this.label(g)} is ADC2, which fails while Wi-Fi is on.`);
         else if (!bd.adc.includes(g)) this.warn('na' + g, `${this.label(g)} isn't an ADC pin.`);
         return null;
       }
-      case 'adc': return Math.round(Math.max(0, Math.min(1, b.adc(a[0]) / 3.3)) * 65535);
+      case 'adc': return Math.round(Math.max(0, Math.min(1, b.adc(b.board.adcAlias?.[a[0]] ?? a[0]) / 3.3)) * 65535);
       case 'i2c_w': case 'i2c_r': case 'i2c_scan': {
         const [sda, scl] = a;
         if (cmd === 'i2c_scan') { const found: number[] = []; for (const s of b.slots.values()) if (s.model.i2c && s.c.pins.SDA === sda && s.c.pins.SCL === scl) found.push(s.model.i2c.address); return found; }
@@ -619,6 +916,14 @@ export class SimPythonRuntime implements Runtime {
         return null;
       }
       case 'tft': { if (!this.tftOk) return null; const t = [...b.slots.values()].find(s => s.c.type === 'tft'); t?.model.sim?.op(a[0], a[1]); return null; }
+      case 'pulse_in': {
+        // machine.time_pulse_us / gpiozero DistanceSensor: ask the part on that pin how long its pulse is
+        const [g, level] = a;
+        for (const u of b.pinMap.get(g) ?? []) { const us = b.model(u.c.uid)?.sim?.echoUs; if (us && level === 1) return Math.round(us()); }
+        if (!b.pinMap.get(g)) this.warn('pi' + g, `${this.label(g)} isn't connected, so time_pulse_us timed out.`);
+        return -1;
+      }
+      case 'glyphs': return glyphs(String(a[0]));
       case 'reset': throw new Error('__stop__');
     }
     return null;
@@ -639,6 +944,12 @@ export class SimPythonRuntime implements Runtime {
       const r = self.hw(js[0], js.slice(1));
       return r == null ? Sk.builtin.none.none$ : Sk.ffi.remapToPy(r);
     });
+    // MicroPython has bytearray/memoryview; Skulpt doesn't. A list of 0-255 ints behaves the same for driver code.
+    const toInts = (x: any): number[] => { const j = Sk.ffi.remapToJs(x); if (typeof j === 'number') return new Array(j).fill(0); if (typeof j === 'string') return [...j].map(c => c.charCodeAt(0) & 255); return Array.from(j as ArrayLike<any>, v => (typeof v === 'number' ? v : 0) & 255); };
+    Sk.builtins.bytearray ??= new Sk.builtin.func(function (x: any) { return Sk.ffi.remapToPy(x === undefined ? [] : toInts(x)); });
+    Sk.builtins.memoryview ??= new Sk.builtin.func(function (x: any) { return x; });
+    // MicroPython raises OSError for bus/device errors; Skulpt only has IOError (its subclass in CPython 3 terms)
+    Sk.builtins.OSError ??= Sk.builtin.IOError;
     Sk.builtins._sleep = new Sk.builtin.func(function (s: any) {
       if (self.stop_) throw new Error('__stop__');
       const ms = Math.max(0, Sk.ffi.remapToJs(s) * 1000);
@@ -651,7 +962,7 @@ export class SimPythonRuntime implements Runtime {
 
     // Module resolution: shims first, then project files (lib/*.py), then Skulpt stdlib.
     const userMods: Record<string, string> = {};
-    for (const [p, src] of Object.entries({ ...MPY_LIBS, ...files })) if (p.endsWith('.py')) userMods[p.split('/').pop()!.replace(/\.py$/, '')] = src;
+    for (const [p, src] of Object.entries({ ...MPY_LIBS, ...(Object.assign({}, ...Object.values(PART_LIBS)) as Record<string, string>), ...files })) if (p.endsWith('.py')) userMods[p.split('/').pop()!.replace(/\.py$/, '')] = src;
     const mainKey = Object.keys(files).find(f => /(^|\/)main\.py$/.test(f)) ?? Object.keys(files)[0];
     const resolve = (name: string) => SHIMS[name] ?? (name !== 'main' ? userMods[name] : undefined);
     Sk.sysmodules = new Sk.builtin.dict([]);

@@ -6,8 +6,10 @@ import { kitFor } from '../src/app/project';
 describe('electrical checks', () => {
   it('passes the default kit on every board without errors', () => {
     for (const id of Object.keys(BOARDS)) {
-      const errs = runChecks(BOARDS[id], kitFor(id)).filter(c => c.level === 'err');
-      expect(errs.map(e => e.msg), id).toEqual([]);
+      const errs = runChecks(BOARDS[id], kitFor(id)).filter(c => c.level === 'err').map(e => e.msg);
+      // a board with no 3.3 V output (Pro Mini 5 V) can't power the 3.3 V kit: that must be the only problem
+      if (!BOARDS[id].rail3v3mA) expect(errs, id).toEqual([expect.stringMatching(/^3V3 rail peak/)]);
+      else expect(errs, id).toEqual([]);
     }
   });
   it('flags pin conflicts, missing ADC, and wrong SPI pins', () => {

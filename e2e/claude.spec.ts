@@ -38,6 +38,14 @@ test('Claude Code can rewire, and asks before adding hardware', async ({ page })
   const screen = page.locator('#claudeTerm .xterm-rows');
   await expect(screen).toContainText('FAKE CLAUDE ready');
   const say = async (t: string) => { await page.locator('#claudeTerm').click(); await page.keyboard.type(t); await page.keyboard.press('Enter'); };
+  // a status question has no side effects, so if the terminal drops the keystrokes under load, just ask again
+  const status = async (want: string) => {
+    for (let i = 0; i < 3; i++) {
+      await say('wiring status');
+      try { await expect(screen).toContainText(want, { timeout: 6000 }); return; } catch { /* ask again */ }
+    }
+    await expect(screen).toContainText(want);
+  };
   const comps = () => page.evaluate(() => (window as any).formframe.project.electronics.comps.map((c: any) => ({ type: c.type, pins: c.pins })));
   const before = (await comps()).length;
   await say('parts catalog');
@@ -47,8 +55,7 @@ test('Claude Code can rewire, and asks before adding hardware', async ({ page })
   await say('please move the button');
   await expect.poll(async () => (await comps()).find((c: any) => c.type === 'button')?.pins.SIG).toBe(7);
   await expect(page.locator('#clAsk')).toBeHidden();
-  await say('wiring status');
-  await expect(screen).toContainText('STATUS: Applied: move Push button (to GND) SIG → GP7.');
+  await status('STATUS: Applied: move Push button (to GND) SIG → GP7.');
 
   // new hardware waits for approval
   await say('please add an led');
@@ -58,8 +65,7 @@ test('Claude Code can rewire, and asks before adding hardware', async ({ page })
   await page.click('#clYes');
   await expect.poll(async () => (await comps()).some((c: any) => c.type === 'led' && c.pins.SIG === 20)).toBe(true);
   await expect(page.locator('#bench .card', { hasText: 'LED + 220' })).toBeVisible(); // on the bench
-  await say('wiring status');
-  await expect(screen).toContainText('STATUS: Approved by the user and applied: add a LED');
+  await status('STATUS: Approved by the user and applied: add a LED');
 
   // declining leaves the bench alone and tells Claude
   await say('please add a servo');
@@ -67,8 +73,7 @@ test('Claude Code can rewire, and asks before adding hardware', async ({ page })
   await page.click('#clNo');
   await expect(page.locator('#clAsk')).toBeHidden();
   expect((await comps()).some((c: any) => c.type === 'servo')).toBe(false);
-  await say('wiring status');
-  await expect(screen).toContainText('STATUS: The user declined: add a SG90');
+  await status('STATUS: The user declined: add a SG90');
 
   await mode(page, 'plan');
   await expect(page.locator('#plLog')).toContainText('Claude added a LED + 220 Ω (you approved)');
