@@ -107,6 +107,8 @@ async function rebuild() {
   await twin?.stopAll();
   for (const v of views) { vp!.scene.remove(v.product.group); v.product.dispose(); v.tag.remove(); }
   views = []; missing = [];
+  twin = null;
+  $('#swList').innerHTML = '<div class="empty">Loading robots…</div>'; $('#swCount').textContent = ''; $('#swObjs').innerHTML = '';
   const s = scene!;
   twin = new Twin(s);
   twin.onSerial = (r, t, cls) => serial(r.def.id, t, cls);

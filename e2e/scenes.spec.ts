@@ -36,7 +36,7 @@ test('scenes: several named robots in one world, run together, saved and reopene
   await expect(page.locator('#home')).toBeVisible();
   await expect(page.locator('#sceneGrid .pcard', { hasText: 'Cell 1' })).toContainText('3 robots');
   await page.locator('#sceneGrid .pcard', { hasText: 'Cell 1' }).click();
+  await expect.poll(async () => (await twin(page))?.map((r: any) => r.name)).toEqual(['Robot arm', 'Obstacle-avoiding rover', 'Scout']);
   await expect(page.locator('#swList .swr')).toHaveCount(3);
-  expect((await twin(page))!.map((r: any) => r.name)).toEqual(['Robot arm', 'Obstacle-avoiding rover', 'Scout']);
   expect(errs).toEqual([]);
 });
