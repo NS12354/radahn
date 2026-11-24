@@ -1,9 +1,9 @@
 // "Use your own Anthropic key": a visitor's key is checked with Anthropic, then
 // kept in an encrypted httpOnly cookie (seal.mjs), never on the server and never
 // readable by the page's JavaScript. AI requests that carry it run on the
-// visitor's own account, so they skip the site's access code.
+// visitor's own account; on the hosted site that is the only way in (guard.mjs).
 //
-//   GET  /api/ai-key            → { ownKey, hint, ownerKey }
+//   GET  /api/ai-key            → { ownKey, hint }
 //   POST /api/ai-key { key }    → check and save it
 //   POST /api/ai-key { remove } → forget it
 import { readCookie, cookieValue, sealKey } from './seal.mjs';
@@ -34,7 +34,7 @@ export async function aiKeyRoute({ method, body, cookie, contentType, secure }) 
     sealKey();
     if (method === 'GET') {
       const k = ownKey(cookie);
-      return { status: 200, json: { ownKey: !!k, hint: k ? hint(k) : null, ownerKey: !!process.env.FF_ACCESS_CODE || !process.env.VERCEL } };
+      return { status: 200, json: { ownKey: !!k, hint: k ? hint(k) : null } };
     }
     if (method !== 'POST') return { status: 405, json: { error: 'GET or POST' } };
     if (!String(contentType ?? '').startsWith('application/json')) return { status: 415, json: { error: 'JSON only' } };

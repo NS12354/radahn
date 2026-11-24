@@ -3,7 +3,7 @@
 // next.  POST /api/plan { context } → { summary, nextStep, taskUpdates, completed, suggestions, risks }
 import Anthropic from '@anthropic-ai/sdk';
 
-const NEEDS_KEY = () => process.env.VERCEL ? 'The AI tracker isn’t available right now: the site’s Anthropic API key is missing or invalid. (Owner: update ANTHROPIC_API_KEY in the Vercel project settings, then redeploy.)' : 'The AI tracker needs ANTHROPIC_API_KEY (in .env) or an `ant auth login` profile. Restart `npm run dev` after adding it.';
+const NEEDS_KEY = () => 'The AI tracker needs ANTHROPIC_API_KEY (in .env) or an `ant auth login` profile. Restart `npm run dev` after adding it.';
 const AREAS = ['electronics', 'code', 'model', 'interactions', 'review', 'other'];
 const SCHEMA = {
   type: 'object', additionalProperties: false,
@@ -56,7 +56,7 @@ export async function planWithAI(context, apiKey) {
   } catch (e) {
     if (e instanceof Anthropic.AuthenticationError || /api key|authentication|credentials/i.test(e?.message ?? '')) throw new Error(apiKey ? 'Anthropic rejected your API key. It may have been revoked: add it again from the Project menu (Claude API key).' : NEEDS_KEY());
     if (e instanceof Anthropic.RateLimitError) throw new Error('The AI is busy right now. Try again in a minute.');
-    if (/credit balance|billing/i.test(e?.message ?? '')) throw new Error(apiKey ? 'Your Anthropic account is out of credits. Top it up in the Anthropic Console.' : 'The site’s Anthropic account is out of credits. Use your own API key, or ask the owner.');
+    if (/credit balance|billing/i.test(e?.message ?? '')) throw new Error(apiKey ? 'Your Anthropic account is out of credits. Top it up in the Anthropic Console.' : 'The Anthropic account in .env is out of credits.');
     throw new Error('The AI update failed: ' + (e?.message ?? e));
   }
   if (res.stop_reason === 'refusal') throw new Error('The AI declined to review this project.');

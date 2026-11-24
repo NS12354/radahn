@@ -1,31 +1,16 @@
-// Protects the features that spend the owner's Anthropic credits (Plan AI,
-// part-from-URL) when the studio is hosted publicly.
+// Who pays for the AI features (Plan AI, part-from-URL).
 //
-//  - Access code: set FF_ACCESS_CODE on the host. Callers send it in the
-//    `x-ff-access` header (the studio asks for it once and remembers it in the
-//    browser). Hosted without a code configured, the site's key is never used:
-//    this fails closed, and visitors can still bring their own key.
-//  - Rate limit: FF_AI_PER_HOUR calls per visitor (IP) per hour, default 20.
-//    Counts live in memory, so each server instance keeps its own tally; it is
-//    a brake on runaway use, and the access code is the real gate.
-//
-//  - Own key: a visitor who saved their own Anthropic key (aikey.mjs) skips
-//    both, and the request runs on their account. They get a looser cap
-//    (FF_OWN_KEY_PER_HOUR, default 120) that only stops this site being used
-//    as a free relay.
-//
-// On the local dev server (no VERCEL env) the code check is skipped unless
-// FF_ACCESS_CODE is set, so `npm run dev` keeps working as before.
-import crypto from 'node:crypto';
+//  - Hosted (Vercel): only visitors' own Anthropic keys (aikey.mjs). The site's
+//    key is never used, so a public deployment can't spend the owner's credits.
+//    Each visitor gets FF_OWN_KEY_PER_HOUR requests an hour (default 120), which
+//    only stops the site being used as a free relay.
+//  - Local dev server (no VERCEL env): an own key if one is saved, otherwise the
+//    developer's ANTHROPIC_API_KEY from .env, as before.
 import { ownKey } from './aikey.mjs';
 
 const hosted = () => !!process.env.VERCEL;
-const perHour = () => Math.max(1, +(process.env.FF_AI_PER_HOUR ?? 20) || 20);
 const ownPerHour = () => Math.max(1, +(process.env.FF_OWN_KEY_PER_HOUR ?? 120) || 120);
-const hits = new Map(); // 'owner|ip' or 'own|ip' -> timestamps (ms) in the last hour
-
-const sha = (s) => crypto.createHash('sha256').update(String(s)).digest();
-function sameCode(given, want) { return crypto.timingSafeEqual(sha(given), sha(want)); }
+const hits = new Map(); // ip -> timestamps (ms) in the last hour
 
 export function clientIp(headers) {
   const h = (k) => { const v = headers[k]; return Array.isArray(v) ? v[0] : v; };
@@ -47,25 +32,11 @@ function limit(bucket, max) {
 
 /**
  * Decide how an AI request runs. Returns { stop } with { status, body } to send
- * back, or { apiKey } (the visitor's own key, or undefined for the site's key).
+ * back, or { apiKey }: the visitor's own key, or undefined for the local .env key.
  */
 export function aiAccess(headers) {
   const own = ownKey(headers.cookie);
-  if (own) { const stop = limit('own|' + clientIp(headers), ownPerHour()); return stop ? { stop } : { apiKey: own }; }
-  const stop = guardAI(headers);
-  return stop ? { stop } : { apiKey: undefined };
-}
-
-/** The site's own key: access code + per-visitor cap. Returns null when it may go ahead, else { status, body }. */
-export function guardAI(headers) {
-  const code = process.env.FF_ACCESS_CODE ?? '';
-  if (!code) {
-    if (hosted()) return { status: 401, body: { error: 'This site has no shared AI access. Use your own Anthropic API key.', needCode: true, noShared: true } };
-    return null; // local dev server
-  }
-  const raw = headers['x-ff-access'];
-  const given = String((Array.isArray(raw) ? raw[0] : raw) ?? '');
-  if (!given) return { status: 401, body: { error: 'This feature needs the access code or your own Anthropic API key.', needCode: true } };
-  if (!sameCode(given, code)) return { status: 401, body: { error: 'That access code is not right.', needCode: true, wrong: true } };
-  return limit('owner|' + clientIp(headers), perHour());
+  if (own) { const stop = limit(clientIp(headers), ownPerHour()); return stop ? { stop } : { apiKey: own }; }
+  if (hosted()) return { stop: { status: 401, body: { error: 'AI features need your own Anthropic API key.', needKey: true } } };
+  return { apiKey: undefined };
 }

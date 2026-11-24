@@ -516,7 +516,7 @@ class FormframeApp implements App {
       if (a === 'home') this.goHome();
       if (a === 'newBlank') this.createProject(blankProject(this.project.electronics.board), 'Blank project');
       if (a === 'newExample') this.createProject(defaultProject(), 'The First Step');
-      if (a === 'aikey') manageAiKey().then(r => { if (r === 'key') toast('Your Anthropic key is saved. AI features now use your account.'); }).catch(e => toast(e.message));
+      if (a === 'aikey') manageAiKey().then(r => { if (r) toast('Your Anthropic key is saved. AI features now use your account.'); }).catch(e => toast(e.message));
       if (a === 'coach') showCoach();
       if (a === 'tour') startTour();
       if (a === 'open') $('#fileProject').click();

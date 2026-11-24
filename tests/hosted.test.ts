@@ -3,30 +3,17 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 const ENV = { ...process.env };
 afterEach(() => { process.env = { ...ENV }; vi.resetModules(); vi.unstubAllGlobals(); });
 
-describe('AI guard (access code + rate limit)', () => {
-  beforeEach(() => { delete process.env.FF_ACCESS_CODE; delete process.env.VERCEL; delete process.env.FF_AI_PER_HOUR; });
-  const load = async () => (await import('../server/guard.mjs')).guardAI;
+describe('AI guard: own keys only on the hosted site', () => {
+  beforeEach(() => { delete process.env.VERCEL; delete process.env.FF_OWN_KEY_PER_HOUR; process.env.FF_SESSION_SECRET = 'test-secret'; });
+  const load = async () => (await import('../server/guard.mjs')).aiAccess;
 
-  it('lets the local dev server through without a code', async () => {
-    expect((await load())({})).toBeNull();
+  it('lets the local dev server use the .env key', async () => {
+    expect((await load())({})).toEqual({ apiKey: undefined });
   });
-  it('never uses the site key when hosted without a code configured', async () => {
+  it('never uses the site key when hosted: asks for the visitor\'s own', async () => {
     process.env.VERCEL = '1';
-    expect((await load())({})).toMatchObject({ status: 401, body: { noShared: true } });
-  });
-  it('asks for the code, rejects a wrong one, accepts the right one', async () => {
-    process.env.VERCEL = '1'; process.env.FF_ACCESS_CODE = 'open-sesame';
-    const g = await load();
-    expect(g({})).toMatchObject({ status: 401, body: { needCode: true } });
-    expect(g({ 'x-ff-access': 'nope' })).toMatchObject({ status: 401, body: { wrong: true } });
-    expect(g({ 'x-ff-access': 'open-sesame', 'x-real-ip': '1.2.3.4' })).toBeNull();
-  });
-  it('caps each visitor per hour', async () => {
-    process.env.FF_ACCESS_CODE = 'c'; process.env.FF_AI_PER_HOUR = '3';
-    const g = await load(), h = { 'x-ff-access': 'c', 'x-forwarded-for': '9.9.9.9, 10.0.0.1' };
-    expect([g(h), g(h), g(h)]).toEqual([null, null, null]);
-    expect(g(h)?.status).toBe(429);
-    expect(g({ ...h, 'x-forwarded-for': '8.8.8.8' })).toBeNull(); // someone else is unaffected
+    expect((await load())({})).toMatchObject({ stop: { status: 401, body: { needKey: true } } });
+    expect((await load())({ 'x-ff-access': 'anything' }).stop?.status).toBe(401); // old access codes do nothing
   });
 });
 
@@ -69,7 +56,7 @@ describe('GitHub session in an encrypted cookie', () => {
 describe('visitor brings their own Anthropic key', () => {
   const key = 'sk-ant-api03-' + 'k'.repeat(80);
   const base = { contentType: 'application/json', secure: true };
-  beforeEach(() => { process.env.FF_SESSION_SECRET = 'test-secret'; process.env.VERCEL = '1'; process.env.FF_ACCESS_CODE = 'c'; });
+  beforeEach(() => { process.env.FF_SESSION_SECRET = 'test-secret'; process.env.VERCEL = '1'; process.env.FF_OWN_KEY_PER_HOUR = '2'; });
 
   it('checks the key with Anthropic and saves it only in an encrypted cookie', async () => {
     const f = vi.fn(async (_url: string) => new Response('{"data":[]}', { status: 200 }));
@@ -81,14 +68,16 @@ describe('visitor brings their own Anthropic key', () => {
     expect(r.cookie).toMatch(/^ff_ai=[A-Za-z0-9_-]+; HttpOnly; SameSite=Lax; Path=\/api; Max-Age=\d+; Secure$/);
     expect(r.cookie).not.toContain('kkkkkkkk');
     expect(f.mock.calls[0][0]).toContain('api.anthropic.com/v1/models');
-    // with that cookie, AI requests run on the visitor's key: no access code needed
+    // with that cookie, AI requests run on the visitor's key (capped per hour)
     const { aiAccess } = await import('../server/guard.mjs');
     const cookie = r.cookie!.split(';')[0];
     expect(aiAccess({ cookie, 'x-real-ip': '5.5.5.5' })).toEqual({ apiKey: key });
-    // without it, the access code is still required
-    expect(aiAccess({ 'x-real-ip': '5.5.5.5' }).stop?.status).toBe(401);
+    expect(aiAccess({ cookie, 'x-real-ip': '5.5.5.5' })).toEqual({ apiKey: key });
+    expect(aiAccess({ cookie, 'x-real-ip': '5.5.5.5' }).stop?.status).toBe(429);
+    // without it, nothing runs
+    expect(aiAccess({ 'x-real-ip': '6.6.6.6' }).stop?.status).toBe(401);
     // status and removal
-    expect((await aiKeyRoute({ ...base, method: 'GET', body: {}, cookie })).json).toMatchObject({ ownKey: true, hint: 'sk-ant-api…kkkk', ownerKey: true });
+    expect((await aiKeyRoute({ ...base, method: 'GET', body: {}, cookie })).json).toEqual({ ownKey: true, hint: 'sk-ant-api…kkkk' });
     expect((await aiKeyRoute({ ...base, method: 'POST', body: { remove: true }, cookie })).cookie).toMatch(/^ff_ai=; .*Max-Age=0/);
   });
   it('rejects a key Anthropic refuses, and junk that is not a key', async () => {

@@ -846,7 +846,7 @@ body.no-sm:not(.m-elec) #bottom{display:none}
 
 /* hosted (Vercel) build: these need the local dev server */
 body.hosted #bBlender,body.hosted #menu [data-a=blender],body.hosted #tabClaude{display:none}
-/* access-code dialog for AI features */
+/* Claude API key dialog for AI features */
 dialog.ffcode{margin:auto;border:0;border-radius:28px;padding:24px;width:min(360px,calc(100vw - 32px));background:var(--panel);color:var(--text);box-shadow:var(--sh-3,0 8px 24px rgba(0,0,0,.18))}
 dialog.ffcode::backdrop{background:rgba(32,33,36,.32)}
 dialog.ffcode h3{font-size:20px;font-weight:400;margin:0 0 8px}
@@ -858,8 +858,5 @@ dialog.ffcode a{color:var(--accent)}
 dialog.ffcode .ffsmall{font-size:12px;color:var(--dim);margin:8px 0 0}
 dialog.ffcode .fferr{color:var(--bad,#b3261e);font-size:13px;margin:8px 0 0;min-height:0}
 dialog.ffcode .fferr:empty{display:none}
-dialog.ffcode .fftabs{display:flex;gap:4px;padding:4px;background:var(--bg);border-radius:999px;margin:0 0 14px}
-dialog.ffcode .fftabs button{flex:1;border:0;background:none;padding:8px 10px;border-radius:999px;font:inherit;font-size:13px;font-weight:500;color:var(--text2);cursor:pointer}
-dialog.ffcode .fftabs button.on{background:var(--sel);color:var(--text)}
 dialog.ffcode .ffkey{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 8px 8px 14px;background:var(--bg);border-radius:12px;margin:0 0 14px;font-size:13px}
 dialog.ffcode .ffkey code{font-family:'JetBrains Mono',monospace;font-size:12px}
