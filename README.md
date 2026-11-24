@@ -133,7 +133,8 @@ How it works (`src/app/kinematics.ts`, `src/app/robot.ts`):
 - **One shared world.** All robots share the floor, walls, line track, obstacles and blocks. Any arm can pick up any block, robots bump into each other, and one robot's sonar sees the others. *+ Block* with an arm selected puts a block (and a pad) where that arm's demo reaches.
 - **Run together.** *Run all* starts every robot's firmware. Each robot also has its own Run/Stop. The console shows every robot's serial output, labelled by name, with a tab per robot.
 - **Arrange.** Drag a robot to move it and Shift-drag to turn it, or type X, Z and heading. Robots can only be moved while stopped. *Reset* puts robots and blocks back where they started.
-- **Limits.** Scenes use the kinematic simulator: the physics option in a robot's own project isn't used there yet. Every emulated chip (RP2040, ATmega) shares one CPU, so three or more run noticeably slower than real time; a behavioral board (ESP32, Pi) is lighter. Physical boards and the ROS 2 bridge don't join scenes.
+- **Physics.** *Physics: Realistic* puts the whole scene in one rigid-body world. Robots collide with and push each other and the blocks, grippers hold by friction, and each servo is limited by its torque. *Simple* uses the faster kinematic model. The setting is saved with the scene; robots' own physics settings don't apply in a scene.
+- **Limits.** Every emulated chip (RP2040, ATmega) shares one CPU, so three or more run noticeably slower than real time; a behavioral board (ESP32, Pi) is lighter. Physical boards and the ROS 2 bridge don't join scenes.
 
 ### The emulator runs slower than real time
 

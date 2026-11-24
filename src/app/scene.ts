@@ -30,6 +30,8 @@ export interface Scene {
   name: string;
   world: World;
   robots: SceneRobot[];
+  /** Rigid-body physics for the whole scene (one shared world: robots collide with each other and the blocks). */
+  physics?: boolean;
 }
 
 export interface SceneMeta { id: string; name: string; created: number; updated: number; robots: number; thumb?: string }

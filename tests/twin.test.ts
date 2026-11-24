@@ -89,4 +89,39 @@ describe('scenes', () => {
     expect(parseScene(serializeScene(s))).toEqual(s);
     expect(() => parseScene('{"format":"formframe"}')).toThrow(/Not a Formframe scene/);
   });
+
+  describe('with physics', () => {
+    it('robots share one rigid-body world: rovers driving at each other collide', async () => {
+      const t = new Twin(newScene('Floor', 'floor'));
+      const p = robotProject('rover-avoid');
+      t.add(def('Left', -400, 0, 90), p);
+      t.add(def('Right', 400, 0, -90), p);
+      await t.setPhysics(true);
+      expect(t.physics!.robots).toHaveLength(2);
+      expect(t.robots.every(r => r.sim.phys?.pw === t.physics)).toBe(true);
+      for (const n of ['Left', 'Right']) drive(t, n, ({ c, st }) => { if (c.type === 'tb6612') { st.a = 0.8; st.b = 0.8; } });
+      run(t, 5);
+      const [l, r] = t.robots.map(x => t.where(x));
+      expect(l.x).toBeGreaterThan(-330); // both drove on wheel traction…
+      expect(r.x).toBeLessThan(330);
+      expect(r.x - l.x).toBeGreaterThan(150); // …and their bodies met nose to nose (~90 mm each) instead of passing through
+      expect(t.robots.every(x => !x.sim.legs.fallen)).toBe(true);
+    });
+    it('blocks rest on the floor, and removing a robot takes its bodies out of the world', async () => {
+      const t = new Twin(newScene('Cell', 'cell'));
+      t.add(def('Arm', 0, 0), robotProject('arm'));
+      t.add(def('Rover', 900, 0), robotProject('rover-avoid'));
+      await t.setPhysics(true);
+      const bodies = t.physics!.world.bodies.len();
+      run(t, 1);
+      { const y = new THREE.Vector3().setFromMatrixPosition(t.objects[0].m).y; expect(y).toBeGreaterThan(8.5); expect(y).toBeLessThan(11); } // on the floor (contacts settle ~0.5 mm in)
+      t.remove(t.byId('Rover')!);
+      expect(t.physics!.robots).toHaveLength(1);
+      expect(t.physics!.world.bodies.len()).toBeLessThan(bodies);
+      run(t, 0.5); // the rest keeps running
+      await t.setPhysics(false);
+      expect(t.physics).toBeNull();
+      expect(t.byId('Arm')!.sim.phys).toBeNull();
+    });
+  });
 });

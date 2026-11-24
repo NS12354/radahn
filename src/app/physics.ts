@@ -12,6 +12,10 @@
  * walls and obstacles are fixed colliders; obstacles marked pickable (the arm's
  * blocks) are dynamic and can be pushed, gripped and carried.
  *
+ * A PhysicsWorld holds the engine and the surroundings. A robot's Physics adds
+ * its links and joints to a world: its own (one robot), or a scene's shared
+ * world, where robots collide with each other and share the blocks.
+ *
  * Units inside Rapier: metres, kilograms, seconds. Formframe: mm, Y up.
  */
 import * as THREE from 'three';
@@ -33,31 +37,101 @@ const MM = 0.001;
 /** Servo weights (g). */
 const SERVO_G: Record<string, number> = { sg90: 9, mg90s: 13, mg996r: 55, ds3218: 60 };
 const KGCM = 0.0980665; // kg·cm → N·m
-const ROBOT = 0x0001_0002, WORLD = 0x0002_0001; // robot colliders touch the world, never each other
+// Collision groups: bit 0 blocks, bit 1 the fixed world (floor, walls, obstacles), bits 2–15 one per robot.
+const BLOCKS = 0x0001, FIXED = 0x0002, ALL = 0xffff;
+const groups = (member: number, filter: number) => ((member & ALL) << 16) | (filter & ALL);
+const FIXED_GROUPS = groups(FIXED, ALL & ~FIXED), BLOCK_GROUPS = groups(BLOCKS, ALL);
+
+/**
+ * The floor, walls, obstacles and blocks, and the engine they live in. Robots join it:
+ * one robot gets a world of its own, a scene shares one between all its robots.
+ */
+export class PhysicsWorld {
+  world: RAPIER_T.World;
+  movable: { index: number; body: RAPIER_T.RigidBody; size: [number, number, number]; shape: 'box' | 'cyl' }[] = [];
+  robots: Physics[] = [];
+  /** Fixed sub-steps per frame (stiff servos on light links need small steps). */
+  substeps = 12;
+  private bits = 0;
+  constructor(w?: World) {
+    if (!R) throw new Error('Physics engine not loaded');
+    this.world = new R.World({ x: 0, y: -9.81, z: 0 });
+    (this.world as any).numSolverIterations = 24; // stiff servo chains on light links need more iterations
+    this.addWorld(w);
+  }
+  /** A collision bit for a new robot. Past 14 robots the rest share the last bit (and don't collide with each other). */
+  takeBit() { for (let b = 2; b < 16; b++) if (!(this.bits & (1 << b))) { this.bits |= 1 << b; return 1 << b; } return 1 << 15; }
+  freeBit(bit: number) { if (this.robots.filter(r => r.bit === bit).length <= 1) this.bits &= ~bit; }
+  /** A robot's colliders touch blocks, the fixed world and every other robot, but not each other. */
+  robotGroups(bit: number) { return groups(bit, ALL & ~bit); }
+
+  private addWorld(w?: World) {
+    const r = R!;
+    const fixed = this.world.createRigidBody(r.RigidBodyDesc.fixed());
+    const size = (w?.size ?? 4000) * MM;
+    this.world.createCollider(r.ColliderDesc.cuboid(size / 2 + 1, 0.05, size / 2 + 1).setTranslation(0, -0.05, 0).setFriction(0.9).setCollisionGroups(FIXED_GROUPS), fixed);
+    if (!w) return;
+    const s = size / 2;
+    for (const [x, z, hx, hz] of [[0, -s - 0.005, s + 0.02, 0.005], [0, s + 0.005, s + 0.02, 0.005], [-s - 0.005, 0, 0.005, s], [s + 0.005, 0, 0.005, s]]) this.world.createCollider(r.ColliderDesc.cuboid(hx, 0.1, hz).setTranslation(x, 0.1, z).setCollisionGroups(FIXED_GROUPS), fixed);
+    w.obstacles.forEach((o, index) => {
+      const [sx, sy, sz] = o.size.map(v => v * MM);
+      const desc = o.shape === 'cyl' ? r.ColliderDesc.cylinder(sy / 2, sx / 2) : r.ColliderDesc.cuboid(sx / 2, sy / 2, sz / 2);
+      desc.setFriction(0.8);
+      const rot = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), (o.rot ?? 0) * Math.PI / 180);
+      if (o.pick) {
+        const body = this.world.createRigidBody(r.RigidBodyDesc.dynamic().setTranslation(o.pos[0] * MM, sy / 2, o.pos[1] * MM).setRotation({ x: rot.x, y: rot.y, z: rot.z, w: rot.w }).setCanSleep(false));
+        desc.setDensity(400).setCollisionGroups(BLOCK_GROUPS); // light foam / plastic block
+        this.world.createCollider(desc, body);
+        this.movable.push({ index, body, size: o.size, shape: o.shape });
+      } else this.world.createCollider(desc.setTranslation(o.pos[0] * MM, sy / 2, o.pos[1] * MM).setRotation({ x: rot.x, y: rot.y, z: rot.z, w: rot.w }).setCollisionGroups(FIXED_GROUPS), fixed);
+    });
+  }
+
+  /** Advance everything by dt: each robot's motors chase the targets it set (Physics.setTargets). */
+  step(dt: number) {
+    this.world.timestep = dt / this.substeps;
+    for (let s = 0; s < this.substeps; s++) {
+      for (const rb of this.robots) rb.drive();
+      this.world.step();
+    }
+  }
+  /** Where the blocks are now: index → [x, y, z] mm and quaternion. */
+  movables() { return this.movable.map(m => { const t = m.body.translation(), q = m.body.rotation(); return { index: m.index, pos: [t.x / MM, t.y / MM, t.z / MM] as [number, number, number], quat: [q.x, q.y, q.z, q.w] as [number, number, number, number] }; }); }
+  dispose() { this.world.free(); this.robots = []; }
+}
+
 
 export interface Link { head: BuiltPart; parts: BuiltPart[]; origin: THREE.Vector3; body: RAPIER_T.RigidBody }
 export interface PhysJoint { id: string; joint: Joint; link: Link; parent: Link; j: RAPIER_T.ImpulseJoint; maxTorque: number; stiffness: number }
 
 export class Physics {
+  /** The world this robot is in (its own unless it joined a scene's). */
+  pw: PhysicsWorld;
   world: RAPIER_T.World;
   links: Link[] = [];
   joints: PhysJoint[] = [];
-  movable: { index: number; body: RAPIER_T.RigidBody; size: [number, number, number]; shape: 'box' | 'cyl' }[] = [];
+  /** This robot's collision bit in its world. */
+  bit: number;
+  private own: boolean;
+  private targets = new Map<string, number | { vel: number }>();
   private linkOfPart = new Map<string, Link>();
-  /** Fixed sub-steps per frame (stiff servos on light links need small steps). */
-  substeps = 12;
+  get movable() { return this.pw.movable; }
+  get substeps() { return this.pw.substeps; }
+  set substeps(n: number) { this.pw.substeps = n; }
 
   /**
    * Build from the model, with every part at its current pose (part id → rest→world matrix).
    * torqueOf(joint) → servo stall torque in kg·cm (0 = an unlimited/ideal actuator).
    */
-  constructor(model: BuiltModel, pose: Map<string, THREE.Matrix4>, torqueOf: (j: Joint) => number) {
+  constructor(model: BuiltModel, pose: Map<string, THREE.Matrix4>, torqueOf: (j: Joint) => number, shared?: PhysicsWorld) {
     if (!R) throw new Error('Physics engine not loaded');
     const r = R, spec = model.robot!;
-    this.world = new r.World({ x: 0, y: -9.81, z: 0 });
-    (this.world as any).numSolverIterations = 24; // stiff servo chains on light links need more iterations
-    // ---- world
-    this.addWorld(spec.world);
+    this.own = !shared;
+    this.pw = shared ?? new PhysicsWorld(spec.world);
+    this.world = this.pw.world;
+    this.bit = this.pw.takeBit();
+    this.pw.robots.push(this);
+    const ROBOT = this.pw.robotGroups(this.bit);
     // ---- links (same grouping as URDF export)
     const parts = model.parts.filter(p => p.role !== 'ignore');
     const byId = new Map(parts.map(p => [p.id, p]));
@@ -114,27 +188,6 @@ export class Physics {
     }
   }
 
-  private addWorld(w?: World) {
-    const r = R!;
-    const fixed = this.world.createRigidBody(r.RigidBodyDesc.fixed());
-    const size = (w?.size ?? 4000) * MM;
-    this.world.createCollider(r.ColliderDesc.cuboid(size / 2 + 1, 0.05, size / 2 + 1).setTranslation(0, -0.05, 0).setFriction(0.9).setCollisionGroups(WORLD), fixed);
-    if (!w) return;
-    const s = size / 2;
-    for (const [x, z, hx, hz] of [[0, -s - 0.005, s + 0.02, 0.005], [0, s + 0.005, s + 0.02, 0.005], [-s - 0.005, 0, 0.005, s], [s + 0.005, 0, 0.005, s]]) this.world.createCollider(r.ColliderDesc.cuboid(hx, 0.1, hz).setTranslation(x, 0.1, z).setCollisionGroups(WORLD), fixed);
-    w.obstacles.forEach((o, index) => {
-      const [sx, sy, sz] = o.size.map(v => v * MM);
-      const desc = o.shape === 'cyl' ? r.ColliderDesc.cylinder(sy / 2, sx / 2) : r.ColliderDesc.cuboid(sx / 2, sy / 2, sz / 2);
-      desc.setFriction(0.8).setCollisionGroups(WORLD);
-      if (o.pick) {
-        const body = this.world.createRigidBody(r.RigidBodyDesc.dynamic().setTranslation(o.pos[0] * MM, sy / 2, o.pos[1] * MM).setCanSleep(false));
-        desc.setDensity(400); // light foam / plastic block
-        this.world.createCollider(desc, body);
-        this.movable.push({ index, body, size: o.size, shape: o.shape });
-      } else this.world.createCollider(desc.setTranslation(o.pos[0] * MM, sy / 2, o.pos[1] * MM), fixed);
-    });
-  }
-
   /** Current joint value (deg or mm) from the bodies' relative pose. */
   measure(pj: PhysJoint): number {
     const q1 = pj.parent.body.rotation(), q2 = pj.link.body.rotation();
@@ -149,31 +202,37 @@ export class Physics {
     return 2 * Math.atan2(rel.x * axis.x + rel.y * axis.y + rel.z * axis.z, rel.w) * 180 / Math.PI;
   }
 
-  /**
-   * Advance by dt. targets: joint id → position (deg / mm) for servos, or { vel } (deg/s) for wheels / motors.
-   * Returns the measured joint values.
-   */
-  step(dt: number, targets: Map<string, number | { vel: number }>): Map<string, number> {
-    const r = R!, h = dt / this.substeps;
-    this.world.timestep = h;
-    for (let s = 0; s < this.substeps; s++) {
-      for (const pj of this.joints) {
-        const t = targets.get(pj.id);
-        if (t == null) continue;
-        const ij = pj.j as any;
-        if (typeof t === 'object') { ij.configureMotorVelocity((t.vel * Math.PI) / 180, 2); continue; }
-        if (pj.joint.type === 'prismatic') { ij.configureMotorPosition(t * MM, pj.stiffness, 60); continue; }
-        // clamp the error so stiffness × error never exceeds the servo's torque
-        const q = this.measure(pj), maxErr = (pj.maxTorque / pj.stiffness) * 180 / Math.PI;
-        const goal = q + Math.max(-maxErr, Math.min(maxErr, t - q));
-        ij.configureMotorPosition((goal * Math.PI) / 180, pj.stiffness, pj.stiffness * 0.04);
-      }
-      this.world.step();
+  /** What the motors should do: joint id → position (deg / mm) for servos, or { vel } (deg/s) for wheels / motors. */
+  setTargets(targets: Map<string, number | { vel: number }>) { this.targets = targets; }
+  /** Apply the targets to the motors (every sub-step). */
+  drive() {
+    for (const pj of this.joints) {
+      const t = this.targets.get(pj.id);
+      if (t == null) continue;
+      const ij = pj.j as any;
+      if (typeof t === 'object') { ij.configureMotorVelocity((t.vel * Math.PI) / 180, 2); continue; }
+      if (pj.joint.type === 'prismatic') { ij.configureMotorPosition(t * MM, pj.stiffness, 60); continue; }
+      // clamp the error so stiffness × error never exceeds the servo's torque
+      const q = this.measure(pj), maxErr = (pj.maxTorque / pj.stiffness) * 180 / Math.PI;
+      const goal = q + Math.max(-maxErr, Math.min(maxErr, t - q));
+      ij.configureMotorPosition((goal * Math.PI) / 180, pj.stiffness, pj.stiffness * 0.04);
     }
-    void r;
+  }
+  /** Measured joint values (deg or mm). */
+  measured(): Map<string, number> {
     const out = new Map<string, number>();
     for (const pj of this.joints) out.set(pj.id, this.measure(pj));
     return out;
+  }
+  /**
+   * Set the targets and, in a world of its own, advance by dt. In a shared world
+   * the scene steps the world once for everyone (PhysicsWorld.step).
+   * Returns the measured joint values.
+   */
+  step(dt: number, targets: Map<string, number | { vel: number }>): Map<string, number> {
+    this.setTargets(targets);
+    if (this.own) this.pw.step(dt);
+    return this.measured();
   }
 
   /** Rest→world matrix for every part (feeds the renderer, sensors and the body pose). */
@@ -188,9 +247,16 @@ export class Physics {
     return out;
   }
   /** Where the movable obstacles are now: index → [x, y, z] mm and quaternion. */
-  movables() { return this.movable.map(m => { const t = m.body.translation(), q = m.body.rotation(); return { index: m.index, pos: [t.x / MM, t.y / MM, t.z / MM] as [number, number, number], quat: [q.x, q.y, q.z, q.w] as [number, number, number, number] }; }); }
+  movables() { return this.pw.movables(); }
   root(): Link { return this.links.find(l => !l.head.parent) ?? this.links[0]; }
-  dispose() { this.world.free(); }
+  /** Leave the world: free it if it's this robot's own, else take this robot's bodies (and their colliders and joints) out of the shared one. */
+  dispose() {
+    if (this.own) { this.pw.dispose(); return; }
+    for (const l of this.links) this.world.removeRigidBody(l.body);
+    this.pw.freeBit(this.bit);
+    this.pw.robots = this.pw.robots.filter(r => r !== this);
+    this.links = []; this.joints = [];
+  }
 }
 
 function vol(p: BuiltPart) { const [a, b, c] = p.size; return Math.max(1, a * b * c) * (p.shape === 'sphere' ? 0.52 : p.shape === 'cyl' || p.shape === 'tube' || p.shape === 'disc' ? 0.785 : 1) * (p.kind === 'shell' ? 0.25 : 1); }

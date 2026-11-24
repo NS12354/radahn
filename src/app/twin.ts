@@ -10,11 +10,15 @@
  * - each other: a robot is a cylinder obstacle to the others, so rovers bump
  *   into and sonar each other.
  *
+ * With physics on (scene.physics), they all live in one rigid-body world instead:
+ * robots really collide, push each other and the blocks, and grip by friction.
+ *
  * Pure logic (no DOM): the scene UI adds the 3D models and the runtimes.
  */
 import * as THREE from 'three';
 import type { BuiltModel, Project, World } from './project';
 import { RobotSim, dropObjects, makeObjects, type WorldObject } from './robot';
+import { PhysicsWorld, loadPhysics } from './physics';
 import type { Scene, SceneRobot } from './scene';
 import { Bench } from '../hw/bench';
 import { BOARDS } from '../hw/library/boards';
@@ -46,6 +50,9 @@ export class Twin {
   objects: WorldObject[] = [];
   onSerial: (r: TwinRobot, text: string, cls?: string) => void = () => {};
   onStatus: (r: TwinRobot) => void = () => {};
+  /** The shared rigid-body world, while physics is on. */
+  physics: PhysicsWorld | null = null;
+  private physGen = 0;
 
   constructor(public scene: Scene) { this.objects = makeObjects(scene.world); }
 
@@ -66,11 +73,14 @@ export class Twin {
     const r: TwinRobot = { def, project, model, board, bench, sim, runtime: null, status: 'stopped', height };
     bench.onLog = (m, l) => this.onSerial(r, m + '\n', l === 'e' ? 'e' : 'w');
     this.robots.push(r);
+    if (this.physics) r.sim.physWorld = this.physics;
     this.place(r);
+    if (this.physics) r.sim.setPhysics(true, project.electronics.comps).catch(() => {});
     return r;
   }
   remove(r: TwinRobot) {
     this.stop(r);
+    r.sim.phys?.dispose(); r.sim.phys = null;
     for (const o of this.objects) if (o.held?.sim === r.sim) o.held = undefined;
     this.robots = this.robots.filter(x => x !== r);
   }
@@ -89,6 +99,25 @@ export class Twin {
     this.objects.length = 0;
     this.objects.push(...makeObjects(w)); // same array: every sim keeps pointing at it
     for (const r of this.robots) { r.sim.sceneWorld = w; this.place(r); }
+    if (this.physics) void this.setPhysics(true);
+  }
+
+  /**
+   * Physics on: build one shared rigid-body world from the scene's world and put every robot
+   * in it, at its spot. Off: back to the kinematic model. Robots and blocks start over either way.
+   */
+  async setPhysics(on: boolean) {
+    const gen = ++this.physGen;
+    if (on) await loadPhysics();
+    if (gen !== this.physGen) return; // a newer call won
+    for (const r of this.robots) { r.sim.phys?.dispose(); r.sim.phys = null; r.sim.physWorld = undefined; }
+    this.physics?.dispose(); this.physics = null;
+    this.scene.physics = on || undefined;
+    this.objects.length = 0; this.objects.push(...makeObjects(this.scene.world));
+    for (const r of this.robots) this.place(r);
+    if (!on) return;
+    const pw = (this.physics = new PhysicsWorld(this.scene.world));
+    for (const r of this.robots) { r.sim.physWorld = pw; await r.sim.setPhysics(true, r.project.electronics.comps); }
   }
   /** Everything back to the start: blocks where the world puts them, robots at their spots. */
   reset() { this.setWorld(this.scene.world); }
@@ -108,7 +137,11 @@ export class Twin {
       });
       r.sim.step(dt, r.project.electronics.comps, r.bench, !!r.runtime?.running);
     }
-    dropObjects(this.objects, this.scene.world, Math.min(dt, 0.05));
+    if (this.physics) {
+      // every robot set its motor targets above; now the shared world moves everyone at once
+      this.physics.step(Math.min(dt, 0.05));
+      for (const mv of this.physics.movables()) { const o = this.objects.find(x => x.index === mv.index); if (o) { o.held = undefined; o.m.compose(new THREE.Vector3(...mv.pos), new THREE.Quaternion(...mv.quat), new THREE.Vector3(1, 1, 1)); } }
+    } else dropObjects(this.objects, this.scene.world, Math.min(dt, 0.05));
   }
 
   async start(r: TwinRobot, makeRuntime: RuntimeFactory, payload: PayloadFactory) {

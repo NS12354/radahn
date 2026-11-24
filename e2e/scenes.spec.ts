@@ -40,3 +40,26 @@ test('scenes: several named robots in one world, run together, saved and reopene
   await expect(page.locator('#swList .swr')).toHaveCount(3);
   expect(errs).toEqual([]);
 });
+
+test('scenes: realistic physics puts every robot in one shared world, and is saved with the scene', async ({ page }) => {
+  test.setTimeout(240_000);
+  const errs = errors(page);
+  await home(page);
+  await page.click('#sceneGrid .scenenew');
+  await page.fill('#swName', 'Physics cell');
+  for (const k of ['arm', 'rover-avoid']) { await page.click('#swAdd'); await page.click(`#swMenu button[data-k="${k}"]`); }
+  await expect(page.locator('#swList .swr')).toHaveCount(2);
+  await page.selectOption('#swPhys', '1');
+  const phys = () => page.evaluate(() => { const t = (globalThis as any).__scene?.(); return t?.physics ? { robots: t.physics.robots.length, shared: t.robots.every((r: any) => r.sim.phys?.pw === t.physics), blockY: t.objects[0]?.m.elements[13] } : null; });
+  await expect.poll(async () => (await phys())?.robots, { timeout: 60_000 }).toBe(2);
+  expect((await phys())!.shared).toBe(true);
+  await page.waitForTimeout(1500);
+  const y = (await phys())!.blockY;
+  expect(y).toBeGreaterThan(8); expect(y).toBeLessThan(12); // the block rests on the floor
+  await page.screenshot({ path: 'test-results/scene-physics.png' });
+  await page.click('#swHome');
+  await page.locator('#sceneGrid .pcard', { hasText: 'Physics cell' }).click();
+  await expect.poll(async () => (await phys())?.robots, { timeout: 60_000 }).toBe(2);
+  await expect(page.locator('#swPhys')).toHaveValue('1');
+  expect(errs).toEqual([]);
+});

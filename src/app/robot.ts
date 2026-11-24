@@ -18,7 +18,7 @@ import * as THREE from 'three';
 import type { BuiltPart, BuiltModel, Joint, World } from './project';
 import { BodyPose, LegContact, clampJoint, diffDrive, driveBody, footRest, forwardKinematics, onTrack, raycastWorld, restMatrix, sensorRay, wheelsOf } from './kinematics';
 import { COMPONENTS, SERVO_TYPES } from '../hw/library/components';
-import { Physics, loadPhysics, physicsReady } from './physics';
+import { Physics, loadPhysics, physicsReady, type PhysicsWorld } from './physics';
 import type { CompInstance, DeviceModel } from '../hw/types';
 
 /** What the simulator needs from the bench. */
@@ -64,6 +64,8 @@ export class RobotSim {
   private wheelDeg = new Map<string, number>();
   /** Rigid-body physics, when on (spec.physics) and loaded. */
   phys: Physics | null = null;
+  /** Scenes: the shared physics world this robot joins (instead of one of its own). */
+  physWorld?: PhysicsWorld;
   /** Servo commands after slew (what the firmware asked for), separate from the measured q under physics. */
   private cmd = new Map<string, number>();
   private comps: CompInstance[] = [];
@@ -124,7 +126,7 @@ export class RobotSim {
     this.phys = this.makePhysics();
   }
   private makePhysics() {
-    const p = new Physics(this.model, this.pose, j => (j.drive ? this.servoOf(j, this.comps).torque : 0));
+    const p = new Physics(this.model, this.pose, j => (j.drive ? this.servoOf(j, this.comps).torque : 0), this.physWorld);
     for (const js of this.joints) this.cmd.set(js.id, js.q);
     return p;
   }

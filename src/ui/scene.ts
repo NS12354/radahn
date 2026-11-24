@@ -73,6 +73,13 @@ export function initScene(h: SceneHost) {
     if (twin.running) { toast('Stop the robots before changing the world'); renderWorld(); return; }
     twin.setWorld(SCENE_WORLDS[k].make()); changed(); renderWorld(); renderSide(); frameAll();
   };
+  $('#swPhys').onchange = async e => {
+    if (!twin) return;
+    const on = !!(e.target as HTMLSelectElement).value;
+    try { await twin.setPhysics(on); } catch (err: any) { toast("Physics couldn't start: " + err.message); (e.target as HTMLSelectElement).value = ''; return; }
+    changed(); renderSide();
+    toast(on ? 'Realistic physics: robots collide, push the blocks and each other, and grip by friction' : 'Simple motion model');
+  };
   $('#swRunAll').onclick = () => runAll();
   $('#swStopAll').onclick = () => twin?.stopAll().then(renderSide);
   $('#swReset').onclick = () => { if (twin?.running) { toast('Stop the robots first'); return; } twin?.reset(); renderSide(); };
@@ -118,6 +125,8 @@ async function rebuild() {
     if (!p || !isRobot(p.product.built)) { missing.push(def); continue; }
     addView(def, p);
   }
+  ($('#swPhys') as HTMLSelectElement).value = s.physics ? '1' : '';
+  if (s.physics) await twin.setPhysics(true).catch(e => toast("Physics couldn't start: " + e.message));
   renderWorld(); renderSide();
 }
 function addView(def: SceneRobot, p: Project) {
