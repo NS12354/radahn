@@ -164,6 +164,7 @@ export const firmwareRunning = () => !!runtime?.running && target === 'virtual';
 function setRunUI(starting = false) {
   const on = starting || !!runtime?.running;
   const b = $('#bRun'); b.textContent = on ? '■ Stop' : '▶ Run'; b.classList.toggle('primary', !on);
+  const t = document.getElementById('bRunTop'); if (t) { t.textContent = on ? '■ Stop' : '▶ Run'; t.classList.toggle('on', on); }
   $('#runState').innerHTML = on ? '<span style="color:var(--ok)">● running</span>' : '<span style="color:var(--faint)">idle</span>';
   $('#bCompile').style.display = board().lang === 'arduino' && target === 'virtual' ? '' : 'none';
   bridge.status(on, on ? (starting ? 'starting' : lastStatus) : 'idle');
@@ -596,6 +597,7 @@ export function initElec(app: App) {
     if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); runtime?.running ? stop() : run(); }
   };
   $('#bRun').onclick = () => (runtime?.running ? stop() : run());
+  $('#bRunTop').onclick = () => (runtime?.running ? stop() : run());
   $('#bCompile').onclick = async () => { compiled = null; await compile(); };
   $('#bTpl').onclick = () => { const e = A.project.electronics; e.files = starterFiles(board(), e); e.filesEdited = false; e.activeFile = Object.keys(e.files)[0]; renderTabs(); A.changed('electronics'); toast(e.starter === 'blank' ? 'Code reset to the empty starter' : 'Code reset to the template for the current wiring'); };
   $('#bClr').onclick = () => { $('#serial').innerHTML = ''; partial = ''; };

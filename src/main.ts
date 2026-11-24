@@ -31,7 +31,7 @@ import type { App, Mode } from './ui/app';
 import { $, $$, b64decode, b64encode, closeModal, copyText, download, modal, toast } from './ui/dom';
 import { initDesign, renderDesign } from './ui/design';
 import { armIdle, drawGraph, fire, initProto, redrawScreen, renderLive, renderScreens, renderTrs, stopIdle } from './ui/proto';
-import { drawWires, elecDial, elecFrame, elecPress, initElec, renderElec, stopElec } from './ui/elec';
+import { drawWires, elecDial, elecFrame, elecPress, initElec, renderElec, stopElec, firmwareRunning } from './ui/elec';
 import { addComment, placePins, renderComments, renderPins } from './ui/review';
 import { exportFirmware } from './proto/stateMachine';
 
@@ -320,8 +320,10 @@ class FormframeApp implements App {
     document.body.className = document.body.className.replace(/m-\w+/, 'm-' + m);
     $$('#modes button').forEach(b => b.classList.toggle('on', b.dataset.m === m));
     $('#hint').innerHTML = document.body.classList.contains('present') ? 'Drag the dial · press the display' : HINTS[m];
-    if (prev === 'elec' && m !== 'elec') { stopElec(); this.product.setLeds(null); redrawScreen(this); }
-    if (m === 'elec' && prev !== 'elec') {
+    // the code keeps running in Design / Review / Plan (watch the robot from anywhere); Prototype simulates the screen itself, so it stops
+    if (prev === 'elec' && m !== 'elec' && (m === 'proto' || !firmwareRunning())) { stopElec(); this.product.setLeds(null); redrawScreen(this); }
+    if (m === 'proto' && firmwareRunning()) { stopElec(); this.product.setLeds(null); redrawScreen(this); }
+    if (m === 'elec' && prev !== 'elec' && !firmwareRunning()) {
       renderElec(this);
       const g = this.product.screen.getContext('2d')!; g.fillStyle = '#000'; g.fillRect(0, 0, 512, 512);
       g.fillStyle = '#3a3f47'; g.font = '500 22px Inter'; g.textAlign = 'center'; g.fillText('Display off · press Run', 256, 256); this.product.screenUpdated();

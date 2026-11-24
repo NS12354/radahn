@@ -52,7 +52,10 @@ export function robotFrame(dt: number) {
     return;
   }
   const s = JSON.stringify(m.parts.map(p => [p.id, p.parent, p.joint, p.foot, p.pos, p.rot, p.size])) + JSON.stringify(m.robot ?? null);
-  if (!sim || sim.model !== m) { sim = new RobotSim(m); sim.settle(); sig = s; render(); prod.setPose(sim.pose); prod.setWorld(m.robot?.world); A.viewport.frame(prod.group); }
+  if (!sim || sim.model !== m) {
+    sim = new RobotSim(m); sim.settle(); sig = s; render(); prod.setPose(sim.pose); prod.setWorld(m.robot?.world); A.viewport.frame(prod.group);
+    if (m.robot?.physics) { const me = sim; me.setPhysics(true, A.project.electronics.comps).then(() => render()).catch(e => toast("Physics couldn't start: " + e.message)); }
+  }
   else if (s !== sig) { sig = s; sim.resync(); sim.settle(); render(); }
   sim.step(dt, A.project.electronics.comps, A.bench, firmwareRunning());
   prod.setPose(sim.pose);
@@ -87,6 +90,7 @@ function render() {
       <div class="rpbtns"><button class="btn" id="rpRec" title="Record the current joint angles">● Record pose</button><button class="btn" id="rpIns" title="Put the recorded poses into the code">Use in code</button><button class="btn" id="rpPlay">▶ Play</button><button class="btn" id="rpClr">Clear</button></div>
       <div class="rpposes">${(sp.poses ?? []).map((p, i) => `<span class="rppose" data-i="${i}" title="Click to go to it">${esc(p.name)}</span>`).join('') || '<span class="dim">No poses yet (teach mode: move the sliders, then Record)</span>'}</div>
       <div class="rprow"><label>World</label><select id="rpWorld">${Object.entries(WORLDS).map(([k, w]) => `<option value="${k}" ${k === worldKind(sp.world) ? 'selected' : ''}>${w.label}</option>`).join('')}</select>
+        <label title="Rigid-body physics (Rapier): gravity, mass, friction, collisions and servo torque limits">Physics</label><select id="rpPhys"><option value="1" ${sp.physics ? 'selected' : ''}>Realistic</option><option value="" ${sp.physics ? '' : 'selected'}>Simple</option></select>
         <label>Moves on</label><select id="rpMobile">${[['fixed', 'Bolted down'], ['wheels', 'Wheels'], ['legs', 'Legs']].map(([k, l]) => `<option value="${k}" ${sp.mobile === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
       ${sp.world ? `<div class="rprow rpobjs"><label>Objects</label>${sp.world.obstacles.map((o, i) => `<span class="rpobj" title="${o.pick ? 'The gripper can pick this up' : 'Fixed in place'}"><i style="background:${esc(o.color ?? '#c8743a')}"></i>${esc(objName(o))}<button class="rpdel" data-i="${i}" title="Remove ${esc(objName(o).toLowerCase())}" aria-label="Remove ${esc(objName(o).toLowerCase())}">×</button></span>`).join('') || '<span class="dim">None</span>'}<button class="btn" id="rpAddBlock" title="Add a 20 mm block the gripper can pick up">+ Block</button></div>` : ''}
       <div class="rprow"><label>Mass</label><input type="number" id="rpMass" value="${sp.mass}" min="10" step="50"> g
@@ -123,6 +127,7 @@ function render() {
     obs.push(pickBlock(at as [number, number]));
     A.changed('product'); render(); track('model', 'Robot world: added a block');
   };
+  $('#rpPhys').onchange = async e => { sp.physics = !!(e.target as HTMLSelectElement).value; sim!.reset(); await sim!.setPhysics(!!sp.physics, A.project.electronics.comps); A.changed('product'); toast(sp.physics ? 'Realistic physics on: gravity, friction, collisions and servo torque limits' : 'Simple motion model'); };
   $('#rpMobile').onchange = e => { sp.mobile = (e.target as HTMLSelectElement).value as any; sim!.reset(); A.changed('product'); };
   $('#rpMass').onchange = e => { sp.mass = Math.max(10, +(e.target as HTMLInputElement).value); A.changed('product'); };
   if (becs.length) $('#rpAmps').onchange = e => { becs[0].props = { ...becs[0].props, amps: Math.max(1, +(e.target as HTMLInputElement).value) }; A.changed('electronics'); };

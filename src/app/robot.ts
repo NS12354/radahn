@@ -290,7 +290,7 @@ export class RobotSim {
       else { this.q.set(js.id, v); js.q = v; }
       // a servo that can't reach its command is being overpowered (gravity, a heavy load)
       const c = this.cmd.get(js.id);
-      js.sag = c != null && js.joint.type === 'revolute' && Math.abs(c - js.q) > 4 ? js.q - c : 0;
+      js.sag = c != null && js.joint.type === 'revolute' && Math.abs(c - js.target) < 0.5 && Math.abs(c - js.q) > 4 ? js.q - c : 0; // only when the command has settled
     }
     this.pose = this.phys!.pose();
     this.body.m.copy(this.pose.get(this.phys!.root().head.id) ?? new THREE.Matrix4());

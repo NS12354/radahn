@@ -39,17 +39,19 @@
   </div>
   <input class="fname" id="pname" spellcheck="false" aria-label="Project name">
   <button class="health none" id="bHealth"><i></i><span>Not tested yet</span></button>
+  <button class="btn runtop" id="bRunTop" title="Run your code on the virtual board (works from any tab)">▶ Run</button>
   <div class="seg" id="modes">
-    <button data-m="design" class="on">Design</button>
-    <button data-m="proto">Prototype</button>
-    <button data-m="elec">Electronics</button>
-    <button data-m="review">Review</button>
-    <button data-m="plan">Plan</button>
-    <button data-m="github">GitHub</button>
+    <button data-m="design" class="on" title="Design: shape the 3D model and its parts">Design</button>
+    <button data-m="proto" title="Prototype: click and drag the model to try how it behaves, before any code">Prototype</button>
+    <button data-m="elec" title="Electronics: pick a board, wire parts and write the code">Electronics</button>
+    <button data-m="review" title="Review: check it fits, see the cost, leave comments">Review</button>
+    <button data-m="plan" class="adv" title="Plan: tasks, progress and history">Plan</button>
+    <button data-m="github" class="adv" title="GitHub: bring code in from your repositories">GitHub</button>
   </div>
   <div class="tb">
-    <button class="btn" id="bModeler" title="Open this project in the Blender-style 3D modeler (separate window)">3D Modeler ↗</button>
-    <button class="btn" id="bBlender" title="Open this project in Blender with a live two-way link">Blender ↗</button>
+    <label class="simpletog" title="Simple hides expert settings. Turn on Advanced for everything."><input type="checkbox" id="bAdvanced"> Advanced</label>
+    <button class="btn adv" id="bModeler" title="Open this project in the Blender-style 3D modeler (separate window)">3D Modeler ↗</button>
+    <button class="btn adv" id="bBlender" title="Open this project in Blender with a live two-way link">Blender ↗</button>
     <button class="btn" id="bExplode">Exploded view</button>
     <button class="btn primary" id="bPresent">Present</button>
   </div>
@@ -80,7 +82,7 @@
     </div>
     <div class="sec nx" id="secScreens"><h3>Screens <span>on display</span></h3><div id="screenList"></div></div>
     <div class="sec nx" id="secInternals"><h3>Internal components <span id="fitBadgeL"></span></h3><div id="compList"></div></div>
-    <div class="sec mx" id="secAddLink">
+    <div class="sec mx adv" id="secAddLink">
       <h3>Add from a link <span id="linkNote"></span></h3>
       <div class="row" style="margin:0"><input type="url" id="partUrl" placeholder="Product page or datasheet URL" spellcheck="false" style="flex:1;min-width:0"><button class="btn primary" id="bPartUrl">Read</button></div>
       <div class="note">Paste a link to any part (a shop page, maker page or PDF datasheet). Formframe reads the specs, requirements and uses, then adds it so you can wire, simulate and auto build with it. <a id="bPartManual" class="lnk">Or define one by hand.</a></div>
@@ -88,7 +90,7 @@
     </div>
     <div class="sec mx"><h3>Add component</h3><div id="libList" class="lib"></div></div>
     <div class="sec mx"><h3>Electrical checks <span id="chkBadge"></span></h3><div id="chkList"></div></div>
-    <div class="sec mx"><h3>Electronics BOM</h3><table class="bom" id="ebom"></table></div>
+    <div class="sec mx adv"><h3>Electronics BOM</h3><table class="bom" id="ebom"></table></div>
   </aside>
 
   <section id="center">

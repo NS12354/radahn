@@ -30,6 +30,8 @@ export function loadPhysics(): Promise<typeof RAPIER_T> {
 export const physicsReady = () => !!R;
 
 const MM = 0.001;
+/** Servo weights (g). */
+const SERVO_G: Record<string, number> = { sg90: 9, mg90s: 13, mg996r: 55, ds3218: 60 };
 const KGCM = 0.0980665; // kg·cm → N·m
 const ROBOT = 0x0001_0002, WORLD = 0x0002_0001; // robot colliders touch the world, never each other
 
@@ -43,7 +45,7 @@ export class Physics {
   movable: { index: number; body: RAPIER_T.RigidBody; size: [number, number, number]; shape: 'box' | 'cyl' }[] = [];
   private linkOfPart = new Map<string, Link>();
   /** Fixed sub-steps per frame (stiff servos on light links need small steps). */
-  substeps = 8;
+  substeps = 12;
 
   /**
    * Build from the model, with every part at its current pose (part id → rest→world matrix).
@@ -53,6 +55,7 @@ export class Physics {
     if (!R) throw new Error('Physics engine not loaded');
     const r = R, spec = model.robot!;
     this.world = new r.World({ x: 0, y: -9.81, z: 0 });
+    (this.world as any).numSolverIterations = 24; // stiff servo chains on light links need more iterations
     // ---- world
     this.addWorld(spec.world);
     // ---- links (same grouping as URDF export)
@@ -61,7 +64,14 @@ export class Physics {
     const moving = (p: BuiltPart) => !!p.joint && p.joint.type !== 'fixed';
     const headOf = (p: BuiltPart): BuiltPart => { let q = p, n = 0; while (q.parent && byId.has(q.parent) && !moving(q) && n++ < 64) q = byId.get(q.parent)!; return q; };
     const heads = parts.filter(p => headOf(p) === p);
-    const totalVol = parts.reduce((a, p) => a + vol(p), 0) || 1;
+    // mass: servos weigh what they weigh (they're most of a walking robot), the rest by volume.
+    // Every moving link also carries the servo that drives it.
+    const servoG = (p: BuiltPart) => (p.detail?.startsWith('servo:') ? SERVO_G[p.detail.slice(6)] ?? 30 : 0);
+    const driven = parts.filter(p => moving(p) && p.joint!.drive && p.joint!.type === 'revolute' && !parts.some(q => q.parent === p.id && q.detail?.startsWith('servo:')));
+    const fixedG = parts.reduce((a, p) => a + servoG(p), 0) + driven.length * 45;
+    const restG = Math.max(spec.mass * 0.25, spec.mass - fixedG);
+    const totalVol = parts.filter(p => !servoG(p)).reduce((a, p) => a + vol(p), 0) || 1;
+    const massOf = (p: BuiltPart) => Math.max(0.004, (servoG(p) || (restG * vol(p)) / totalVol + (driven.includes(p) ? 45 : 0)) / 1000);
     for (const h of heads) {
       const members = parts.filter(p => headOf(p) === h);
       const origin = new THREE.Vector3(...(h.joint ? h.joint.pivot : (centroid(members) as [number, number, number])));
@@ -74,7 +84,7 @@ export class Physics {
       const body = this.world.createRigidBody(desc);
       const link: Link = { head: h, parts: members, origin, body };
       for (const p of members) {
-        const mass = Math.max(0.002, (spec.mass / 1000) * vol(p) / totalVol);
+        const mass = massOf(p);
         const c = colliderFor(r, p, origin);
         if (!c) continue;
         const v = c.vol;
