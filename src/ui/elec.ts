@@ -113,7 +113,7 @@ async function compile(): Promise<string | null> {
     // Hosted build: fall back to the precompiled example when the sketch is the unmodified template
     const tpl = starterFiles(board(), A.project.electronics);
     const pristine = Object.entries(src).every(([k, v]) => tpl[k] === v);
-    if (pristine && A.project.electronics.starter !== 'blank') {
+    if (pristine && A.project.electronics.starter === 'thermostat') { // the only precompiled example is the thermostat
       const r = await fetch(A.base + `firmware/examples/${board().id}-thermostat-${kitKey()}.hex.txt`).catch(() => null);
       if (r?.ok) { const hex = await r.text(); out.textContent = '✓ Using the precompiled example (no compiler in this build)'; emitCompile('No compiler here, so the precompiled example sketch was used.', true); compiled = { key, hex }; return hex; }
     }

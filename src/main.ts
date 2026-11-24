@@ -7,7 +7,7 @@ import type { Product } from './scene/product';
 import { Bench } from './hw/bench';
 import { BOARDS } from './hw/library/boards';
 import { audio } from './hw/audio';
-import { blankProject, defaultProject, parseProject, serializeProject, type Project } from './app/project';
+import { blankProject, defaultProject, hasStateMachine, parseProject, serializeProject, type Project } from './app/project';
 import { deleteProject, getMeta, loadProject, migrateLegacy, newProjectId, saveProject, journalWrite, journalClear, journalRecover } from './app/store';
 import { EmptyProduct } from './scene/empty';
 import { BuiltProduct } from './scene/built';
@@ -41,6 +41,7 @@ import { exportFirmware } from './proto/stateMachine';
 
 const BASE = import.meta.env.BASE_URL;
 
+const HINT_ELEC = '<b>Electronics</b> · wire a board and press <b>Run</b>: the parts on the 3D model follow the running code';
 const HINTS: Record<Mode, string> = {
   design: '<b>Design</b> · click a part to edit it · import your own CAD from the Project menu or the left panel',
   proto: '<b>Prototype</b> · drag the dial to turn · click the display to press · hold to long-press',
@@ -326,11 +327,13 @@ class FormframeApp implements App {
   }
 
   setMode(m: Mode) {
+    if (m === 'proto' && !hasStateMachine(this.project)) m = 'design'; // the interaction prototype is the thermostat example's
     const prev = this.mode;
     this.mode = m;
     document.body.className = document.body.className.replace(/m-\w+/, 'm-' + m);
     $$('#modes button').forEach(b => b.classList.toggle('on', b.dataset.m === m));
-    $('#hint').innerHTML = document.body.classList.contains('present') ? 'Drag the dial · press the display' : HINTS[m];
+    const sm = hasStateMachine(this.project);
+    $('#hint').innerHTML = document.body.classList.contains('present') ? (sm ? 'Drag the dial · press the display' : 'Drag to look around') : m === 'elec' && !sm ? HINT_ELEC : HINTS[m];
     // the code keeps running in Design / Review / Plan (watch the robot from anywhere); Prototype simulates the screen itself, so it stops
     if (prev === 'elec' && m !== 'elec' && (m === 'proto' || !firmwareRunning())) { stopElec(); this.product.setLeds(null); redrawScreen(this); }
     if (m === 'proto' && firmwareRunning()) { stopElec(); this.product.setLeds(null); redrawScreen(this); }
@@ -367,6 +370,7 @@ class FormframeApp implements App {
     this.builtSig = p.product.built ? JSON.stringify({ ...p.product.built, rev: 0 }) : '';
     this.bench.env = p.env;
     this.sm = { state: 'home', target: 22, room: p.env.roomC };
+    document.body.classList.toggle('no-sm', !hasStateMachine(p));
     await this.rebuildProduct();
     this.renderAll();
     renderElec(this);
@@ -482,7 +486,6 @@ class FormframeApp implements App {
     $('#eImport').onclick = () => $('#fileCad').click();
     $('#eAuto').onclick = () => runAutoBuild();
     $('#eBuild').onclick = () => this.startBuild();
-    $('#eParam').onclick = async () => { this.project.product.source = 'parametric'; await this.rebuildProduct(); renderDesign(this); this.changed('product'); };
     $$('#vpEmpty a[data-m]').forEach(a => (a.onclick = () => this.setMode(a.dataset.m as Mode)));
     // closing or hiding the tab: journal pending changes synchronously, then try the normal save
     const unload = () => { if (this.saveT && this.projectId) { journalWrite(this.projectId, this.project); this.flush(); } };

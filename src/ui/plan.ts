@@ -6,6 +6,7 @@ import { COMPONENTS } from '../hw/library/components';
 import { pinLabel } from '../hw/library/boards';
 import { emptyPlan, logEvent, milestones, taskId, type PlanData, type PlanTask, type PlanArea, type TaskStatus, type LogKind, type Milestone } from '../app/plan';
 import { friendly } from '../app/explain';
+import { hasStateMachine } from '../app/project';
 
 /**
  * Plan tab: milestones that tick themselves, your task board, an automatic
@@ -49,6 +50,7 @@ function state(): Milestone[] {
     modelProblems: probs.filter(x => x.area === 'model' && x.level !== 'tip').length,
     roleTips: probs.filter(x => x.area === 'model' && x.level === 'tip').length,
     interactions: A.project.interactions.length, comments: A.project.comments.length,
+    stateMachine: hasStateMachine(A.project),
   });
 }
 function checkMilestones() {

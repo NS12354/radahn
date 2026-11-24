@@ -1,6 +1,7 @@
 import type { App } from './app';
 import { $, el, opts, toast } from './dom';
 import { ACTIONS, LEDCOL, LEDS, STATES, TRIGGERS, drawScreen, step } from '../proto/stateMachine';
+import { hasStateMachine } from '../app/project';
 import { audio } from '../hw/audio';
 import { unhandled } from './health';
 import { track } from './track';
@@ -17,7 +18,11 @@ function beep(f: number) {
 }
 const log = (msg: string, cls = '') => { const l = $('#log'); const d = el('div', cls); d.textContent = msg; l.prepend(d); while (l.children.length > 8) l.lastChild!.remove(); };
 
-export function redrawScreen(app: App) { drawScreen(app.product.screen, app.sm); app.product.screenUpdated(); }
+export function redrawScreen(app: App) {
+  if (hasStateMachine(app.project)) drawScreen(app.product.screen, app.sm);
+  else { const g = app.product.screen.getContext('2d')!; g.fillStyle = '#000'; g.fillRect(0, 0, 512, 512); } // no thermostat UI on other projects' displays
+  app.product.screenUpdated();
+}
 
 export function fire(app: App, trig: string) {
   if (app.mode !== 'proto') return;

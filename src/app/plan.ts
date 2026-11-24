@@ -52,6 +52,7 @@ export interface MilestoneInput {
   codeRan: boolean; runBroken: number; tested: boolean; lastTest?: { at: string; passed: boolean; failed: number };
   hasModel: boolean; modelProblems: number; roleTips: number;
   interactions: number; comments: number;
+  stateMachine?: boolean; // only the thermostat example has an interaction prototype
 }
 export interface Milestone { id: string; title: string; done: boolean; detail: string; area: PlanArea; go: 'design' | 'proto' | 'elec' | 'review' }
 export function milestones(m: MilestoneInput): Milestone[] {
@@ -63,7 +64,7 @@ export function milestones(m: MilestoneInput): Milestone[] {
     { id: 'model', title: 'Make a 3D model', done: m.hasModel, detail: m.hasModel ? 'Model in place' : 'No model yet', area: 'model', go: 'design' },
     { id: 'fits', title: 'Electronics fit the case', done: m.hasModel && !m.modelProblems, detail: !m.hasModel ? 'Make a model first' : m.modelProblems ? `${m.modelProblems} fit problem${m.modelProblems > 1 ? 's' : ''}` : 'Everything fits', area: 'model', go: 'design' },
     { id: 'roles', title: 'Model shows the electronics', done: m.hasModel && m.parts > 0 && !m.roleTips, detail: !m.hasModel ? 'Make a model first' : m.roleTips ? `${m.roleTips} part${m.roleTips > 1 ? 's' : ''} not on the model` : 'Dial, screen and lights mapped', area: 'model', go: 'design' },
-    { id: 'interactions', title: 'Design the interactions', done: m.interactions > 0, detail: m.interactions ? `${m.interactions} interaction${m.interactions > 1 ? 's' : ''}` : 'None yet', area: 'interactions', go: 'proto' },
+    ...(m.stateMachine === false ? [] : [{ id: 'interactions', title: 'Design the interactions', done: m.interactions > 0, detail: m.interactions ? `${m.interactions} interaction${m.interactions > 1 ? 's' : ''}` : 'None yet', area: 'interactions', go: 'proto' } as Milestone]),
     { id: 'review', title: 'Clear review comments', done: m.comments === 0, detail: m.comments ? `${m.comments} open` : 'None open', area: 'review', go: 'review' },
   ];
 }

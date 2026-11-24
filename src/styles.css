@@ -839,3 +839,7 @@ aside{background:var(--panel)}
 .crmore summary:hover{color:var(--text)}
 /* the robot panel stops above the view tools in the bottom corner */
 .robotp{max-height:calc(100% - 84px)}
+
+/* the Home / Set temp / Eco / Away interaction prototype belongs to the thermostat example only */
+body.no-sm #modes [data-m=proto],body.no-sm #menu [data-a=parametric],body.no-sm #menu [data-a=firmware],body.no-sm #statebadge,body.no-sm #secScreens{display:none}
+body.no-sm:not(.m-elec) #bottom{display:none}

@@ -273,6 +273,9 @@ export function defaultProject(): Project {
   };
 }
 
+/** Only the thermostat example (The First Step) has the Home / Set temp / Eco / Away interaction prototype. */
+export const hasStateMachine = (p: Project) => p.electronics.starter === 'thermostat' || p.interactions.length > 0;
+
 /** Starter code for the project's board, following its starter kind. */
 export function starterFiles(b: BoardDef, e: Project['electronics']): Record<string, string> {
   if (e.starter === 'robot' && e.robot) return robotFiles(b, e.robot, e.comps);
