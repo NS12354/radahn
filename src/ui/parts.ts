@@ -1,4 +1,5 @@
 import type { App } from './app';
+import { aiFetch } from '../app/access';
 import { $, $$, el, esc, toast } from './dom';
 import { COMPONENTS } from '../hw/library/components';
 import type { RoleDef } from '../hw/types';
@@ -41,7 +42,7 @@ async function read() {
   box.innerHTML = `<div class="busy"><i></i><span>Reading ${esc(new URL(url, location.href).hostname)}… (pages with a datasheet take up to a minute)</span></div>`;
   $('#bPartUrl').setAttribute('disabled', '');
   try {
-    const r = await fetch(A.base + 'api/part-from-url', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ url }) }).catch(() => null);
+    const r = await aiFetch(A.base + 'api/part-from-url', { url });
     if (!r) throw new Error('Could not reach the Formframe dev server. Reading links needs `npm run dev`.');
     if (r.status === 404) throw new Error('This build has no server, so it can’t read links. Run `npm run dev`, or define the part by hand.');
     const j = await r.json().catch(() => ({ error: `Server error ${r.status}` }));

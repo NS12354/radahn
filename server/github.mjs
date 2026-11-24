@@ -1,27 +1,49 @@
 // GitHub for the studio's GitHub tab: sign in (OAuth device flow, or a
 // personal access token), list repositories, browse a branch, read files.
 //
-// The access token never reaches the browser: it lives in a server-side
-// session keyed by an httpOnly cookie, and every GitHub call goes through
-// here. Sessions are in memory, so restarting the server signs you out.
-// (A hosted deployment needs a persistent, encrypted session store.)
+// The access token never reaches the browser's JavaScript: it is kept in an
+// encrypted, httpOnly cookie (AES-256-GCM) and every GitHub call goes through
+// here. Nothing is stored on the server, so this works the same on the local
+// dev server and on a serverless host (Vercel), where each request may land on
+// a fresh instance. The key comes from FF_SESSION_SECRET; without one (local
+// dev only) a random key is made per server start, which signs you out on restart.
 import crypto from 'node:crypto';
 
 const API = 'https://api.github.com';
 const COOKIE = 'ff_gh';
-const sessions = new Map(); // sid → { token, user, device?: { code, interval, expires } }
 const SCOPES = 'repo read:user';
 const MAX_FILE = 1_000_000;
+const MAX_AGE = 30 * 24 * 3600; // seconds
+
+let devKey = null;
+function key() {
+  const secret = process.env.FF_SESSION_SECRET;
+  if (secret) return crypto.createHash('sha256').update(secret).digest();
+  if (process.env.VERCEL) throw Object.assign(new Error('GitHub sign-in is not set up on this site (FF_SESSION_SECRET is missing).'), { status: 503 });
+  return (devKey ??= crypto.randomBytes(32));
+}
+function seal(obj) {
+  const iv = crypto.randomBytes(12), c = crypto.createCipheriv('aes-256-gcm', key(), iv);
+  const ct = Buffer.concat([c.update(JSON.stringify(obj), 'utf8'), c.final()]);
+  return Buffer.concat([iv, c.getAuthTag(), ct]).toString('base64url');
+}
+function open(raw) {
+  try {
+    const b = Buffer.from(raw, 'base64url'); if (b.length < 29) return {};
+    const d = crypto.createDecipheriv('aes-256-gcm', key(), b.subarray(0, 12)); d.setAuthTag(b.subarray(12, 28));
+    return JSON.parse(Buffer.concat([d.update(b.subarray(28)), d.final()]).toString('utf8'));
+  } catch (e) { if (e.status) throw e; return {}; } // tampered, old key, or garbage: treat as signed out
+}
+function readSession(cookieHeader) {
+  const m = String(cookieHeader ?? '').match(new RegExp(`(?:^|;\\s*)${COOKIE}=([A-Za-z0-9_-]+)`));
+  return m ? open(m[1]) : {};
+}
+function sessionCookie(s, secure) {
+  const empty = !s.token && !s.device;
+  return `${COOKIE}=${empty ? '' : seal(s)}; HttpOnly; SameSite=Lax; Path=/api/github; Max-Age=${empty ? 0 : MAX_AGE}${secure ? '; Secure' : ''}`;
+}
 
 const clientId = () => process.env.GITHUB_CLIENT_ID || '';
-function sid(req, res) {
-  const m = (req.headers.cookie ?? '').match(new RegExp(`(?:^|;\\s*)${COOKIE}=([a-f0-9]{48})`));
-  if (m && sessions.has(m[1])) return m[1];
-  const id = crypto.randomBytes(24).toString('hex');
-  sessions.set(id, {});
-  res.setHeader('set-cookie', `${COOKIE}=${id}; HttpOnly; SameSite=Lax; Path=/api/github`);
-  return id;
-}
 async function gh(token, path, opts = {}) {
   const r = await fetch(API + path, { ...opts, headers: { accept: 'application/vnd.github+json', 'x-github-api-version': '2022-11-28', 'user-agent': 'Formframe', ...(token ? { authorization: `Bearer ${token}` } : {}), ...(opts.headers ?? {}) }, signal: AbortSignal.timeout(20000) });
   if (r.status === 401) throw Object.assign(new Error('GitHub sign-in expired. Sign in again.'), { status: 401 });
@@ -38,46 +60,55 @@ function readBody(req) {
   return new Promise((res, rej) => { let b = ''; req.on('data', c => { b += c; if (b.length > 1e5) { rej(new Error('Too large')); req.destroy(); } }); req.on('end', () => { try { res(b ? JSON.parse(b) : {}); } catch { rej(new Error('Bad JSON')); } }); });
 }
 
-export function githubApi(server) {
-  server.middlewares.use('/api/github', async (req, res) => {
-    res.setHeader('content-type', 'application/json');
-    res.setHeader('cache-control', 'no-store');
-    const send = (code, obj) => { res.statusCode = code; res.end(JSON.stringify(obj)); };
-    const id = sid(req, res), s = sessions.get(id);
-    const url = new URL(req.url ?? '/', 'http://x'), route = url.pathname.replace(/^\/+/, ''), q = url.searchParams;
-    try {
-      if (req.method === 'POST' && !String(req.headers['content-type'] ?? '').startsWith('application/json')) return send(415, { error: 'JSON only' }); // blocks cross-site form posts
-      if (route === 'status') return send(200, { signedIn: !!s.token, user: s.user ?? null, deviceFlow: !!clientId() });
+/**
+ * One GitHub API request, independent of the server framework.
+ * route: path after /api/github/ (e.g. "tree"); q: URLSearchParams; body: parsed JSON (POST).
+ * Returns { status, json, cookie? } where cookie is a Set-Cookie value to send.
+ */
+export async function githubRoute({ method, route, q, body, cookie, contentType, secure }) {
+  let changed = false, s = {}, status = 200, json;
+  const send = (code, obj) => { status = code; json = obj; };
+  const save = (next) => { s = next; changed = true; };
+  try {
+    key(); // fails clearly when a hosted site has no FF_SESSION_SECRET
+    s = readSession(cookie);
+    if (method === 'POST' && !String(contentType ?? '').startsWith('application/json')) send(415, { error: 'JSON only' }); // blocks cross-site form posts
+    else await handle();
+  } catch (e) { send(e.status ?? 400, { error: e.message }); }
+  return { status, json, cookie: changed ? sessionCookie(s, secure) : undefined };
+
+  async function handle() {
+      if (route === 'status') return send(200, { signedIn: !!s.token, user: s.user ?? null, deviceFlow: !!clientId(), hosted: !!process.env.VERCEL });
 
       // ---- sign in with a personal access token
-      if (route === 'token' && req.method === 'POST') {
-        const { token } = await readBody(req);
+      if (route === 'token' && method === 'POST') {
+        const { token } = body ?? {};
         if (!/^(gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})$/.test(String(token ?? '').trim())) return send(400, { error: 'That doesn\'t look like a GitHub token (it starts with ghp_ or github_pat_).' });
         const u = await gh(token.trim(), '/user');
-        Object.assign(s, { token: token.trim(), user: user(u) });
+        save({ token: token.trim(), user: user(u) });
         return send(200, { signedIn: true, user: s.user });
       }
       // ---- sign in with GitHub (device flow: the user types a code on github.com)
-      if (route === 'device/start' && req.method === 'POST') {
+      if (route === 'device/start' && method === 'POST') {
         if (!clientId()) return send(400, { error: 'Sign in with GitHub needs GITHUB_CLIENT_ID in .env (an OAuth app with device flow enabled).' });
         const r = await fetch('https://github.com/login/device/code', { method: 'POST', headers: { accept: 'application/json', 'content-type': 'application/json' }, body: JSON.stringify({ client_id: clientId(), scope: SCOPES }) });
         const j = await r.json();
         if (!r.ok || j.error) return send(400, { error: j.error_description ?? 'GitHub refused the sign-in request. Is device flow enabled for the OAuth app?' });
-        s.device = { code: j.device_code, interval: j.interval ?? 5, expires: Date.now() + j.expires_in * 1000 };
+        save({ ...s, device: { code: j.device_code, interval: j.interval ?? 5, expires: Date.now() + j.expires_in * 1000 } });
         return send(200, { userCode: j.user_code, verifyUrl: j.verification_uri, interval: s.device.interval, expiresIn: j.expires_in });
       }
-      if (route === 'device/poll' && req.method === 'POST') {
+      if (route === 'device/poll' && method === 'POST') {
         if (!s.device) return send(400, { error: 'No sign-in in progress.' });
-        if (Date.now() > s.device.expires) { s.device = undefined; return send(200, { status: 'expired' }); }
+        if (Date.now() > s.device.expires) { save({ ...s, device: undefined }); return send(200, { status: 'expired' }); }
         const r = await fetch('https://github.com/login/oauth/access_token', { method: 'POST', headers: { accept: 'application/json', 'content-type': 'application/json' }, body: JSON.stringify({ client_id: clientId(), device_code: s.device.code, grant_type: 'urn:ietf:params:oauth:grant-type:device_code' }) });
         const j = await r.json();
-        if (j.access_token) { const u = await gh(j.access_token, '/user'); Object.assign(s, { token: j.access_token, user: user(u), device: undefined }); return send(200, { status: 'ok', user: s.user }); }
-        if (j.error === 'slow_down') { s.device.interval += 5; return send(200, { status: 'pending', interval: s.device.interval }); }
+        if (j.access_token) { const u = await gh(j.access_token, '/user'); save({ token: j.access_token, user: user(u) }); return send(200, { status: 'ok', user: s.user }); }
+        if (j.error === 'slow_down') { save({ ...s, device: { ...s.device, interval: s.device.interval + 5 } }); return send(200, { status: 'pending', interval: s.device.interval }); }
         if (j.error === 'authorization_pending') return send(200, { status: 'pending', interval: s.device.interval });
-        s.device = undefined;
+        save({ ...s, device: undefined });
         return send(200, { status: j.error === 'access_denied' ? 'denied' : 'expired' });
       }
-      if (route === 'logout' && req.method === 'POST') { sessions.set(id, {}); return send(200, { signedIn: false }); }
+      if (route === 'logout' && method === 'POST') { save({}); return send(200, { signedIn: false }); }
 
       if (!s.token) return send(401, { error: 'Sign in to GitHub first.' });
       // ---- browse
@@ -107,6 +138,19 @@ export function githubApi(server) {
         return send(200, { path, content: buf.toString('utf8'), sha: f.sha });
       }
       send(404, { error: 'not found' });
-    } catch (e) { send(e.status ?? 400, { error: e.message }); }
+  }
+}
+
+/** Local dev server (Vite middleware). */
+export function githubApi(server) {
+  server.middlewares.use('/api/github', async (req, res) => {
+    const url = new URL(req.url ?? '/', 'http://x');
+    let body = {};
+    if (req.method === 'POST') { try { body = await readBody(req); } catch (e) { res.statusCode = 400; return res.end(JSON.stringify({ error: e.message })); } }
+    const r = await githubRoute({ method: req.method, route: url.pathname.replace(/^\/+/, ''), q: url.searchParams, body, cookie: req.headers.cookie, contentType: req.headers['content-type'], secure: false });
+    res.setHeader('content-type', 'application/json');
+    res.setHeader('cache-control', 'no-store');
+    if (r.cookie) res.setHeader('set-cookie', r.cookie);
+    res.statusCode = r.status; res.end(JSON.stringify(r.json));
   });
 }

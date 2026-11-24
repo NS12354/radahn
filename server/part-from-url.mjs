@@ -191,8 +191,8 @@ export async function partFromUrl(url) {
   } catch (e) {
     if (e?.refusal) throw e;
     const auth = e instanceof Anthropic.AuthenticationError || /api key|authentication|credentials|apiKey/i.test(e?.message ?? '');
-    if (!page) throw new Error(auth ? 'Reading a PDF needs Claude: set ANTHROPIC_API_KEY (or run `ant auth login`) and restart `npm run dev`.' : `Couldn't read the datasheet: ${e.message}`);
-    notes.push(auth ? 'No Anthropic credentials, so this is a rough guess from the page text. Set ANTHROPIC_API_KEY (or run `ant auth login`) and restart `npm run dev` for a proper read.' : `Claude couldn't read it (${e.message}), so this is a rough guess from the page text.`);
+    if (!page) throw new Error(auth ? (process.env.VERCEL ? 'Reading a PDF needs Claude, and the site’s Anthropic API key is missing or invalid right now.' : 'Reading a PDF needs Claude: set ANTHROPIC_API_KEY (or run `ant auth login`) and restart `npm run dev`.') : `Couldn't read the datasheet: ${e.message}`);
+    notes.push(auth ? (process.env.VERCEL ? 'The site’s Anthropic API key is missing or invalid, so this is a rough guess from the page text.' : 'No Anthropic credentials, so this is a rough guess from the page text. Set ANTHROPIC_API_KEY (or run `ant auth login`) and restart `npm run dev` for a proper read.') : `Claude couldn't read it (${e.message}), so this is a rough guess from the page text.`);
     return { part: heuristic(page), source: 'heuristic', notes, datasheet, title, url: first.url };
   }
 }

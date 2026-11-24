@@ -3,6 +3,7 @@
 // next.  POST /api/plan { context } → { summary, nextStep, taskUpdates, completed, suggestions, risks }
 import Anthropic from '@anthropic-ai/sdk';
 
+const NEEDS_KEY = () => process.env.VERCEL ? 'The AI tracker isn’t available right now: the site’s Anthropic API key is missing or invalid. (Owner: update ANTHROPIC_API_KEY in the Vercel project settings, then redeploy.)' : 'The AI tracker needs ANTHROPIC_API_KEY (in .env) or an `ant auth login` profile. Restart `npm run dev` after adding it.';
 const AREAS = ['electronics', 'code', 'model', 'interactions', 'review', 'other'];
 const SCHEMA = {
   type: 'object', additionalProperties: false,
@@ -39,7 +40,7 @@ export async function planWithAI(context) {
   const text = JSON.stringify(context);
   if (text.length > 400_000) throw new Error('This project is too large to send in one update.');
   let client;
-  try { client = new Anthropic(); } catch { throw new Error('The AI tracker needs ANTHROPIC_API_KEY (in .env) or an `ant auth login` profile. Restart `npm run dev` after adding it.'); }
+  try { client = new Anthropic(); } catch { throw new Error(NEEDS_KEY()); }
   let res;
   try {
     res = await client.beta.messages.create({
@@ -52,7 +53,7 @@ export async function planWithAI(context) {
       messages: [{ role: 'user', content: `Here is the project. Update its progress.\n\n<project>\n${text}\n</project>` }],
     });
   } catch (e) {
-    if (e instanceof Anthropic.AuthenticationError || /api key|authentication|credentials/i.test(e?.message ?? '')) throw new Error('The AI tracker needs ANTHROPIC_API_KEY (in .env) or an `ant auth login` profile. Restart `npm run dev` after adding it.');
+    if (e instanceof Anthropic.AuthenticationError || /api key|authentication|credentials/i.test(e?.message ?? '')) throw new Error(NEEDS_KEY());
     if (e instanceof Anthropic.RateLimitError) throw new Error('The AI is busy right now. Try again in a minute.');
     throw new Error('The AI update failed: ' + (e?.message ?? e));
   }

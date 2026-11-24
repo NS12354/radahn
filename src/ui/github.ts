@@ -10,7 +10,7 @@ import { highlight, langOf } from '../device/editor';
  */
 let A: App;
 const S = {
-  user: null as GhUser | null, deviceFlow: false, repos: [] as GhRepo[], q: '',
+  user: null as GhUser | null, deviceFlow: false, hosted: false, repos: [] as GhRepo[], q: '',
   repo: null as GhRepo | null, branches: [] as string[], ref: '', items: [] as GhItem[], truncated: false,
   open: new Set<string>(), checked: new Set<string>(), codeOnly: true, preview: null as null | { path: string; content: string } | { path: string; error: string },
   loading: '', device: null as null | { userCode: string; verifyUrl: string },
@@ -21,7 +21,7 @@ const visible = () => document.body.classList.contains('m-github');
 
 // ------------------------------------------------------------------ data
 async function refreshStatus() {
-  try { const s = await gh.status(); S.user = s.user; S.deviceFlow = s.deviceFlow; if (S.user && !S.repos.length) await loadRepos(); }
+  try { const s = await gh.status(); S.user = s.user; S.deviceFlow = s.deviceFlow; S.hosted = !!s.hosted; if (S.user && !S.repos.length) await loadRepos(); }
   catch (e: any) { S.user = null; S.loading = ''; toast(e.message); }
   render();
 }
@@ -91,9 +91,9 @@ export function render() {
     left.innerHTML = `<div class="ghh"><h2>GitHub</h2></div>
       <p class="ghp">Sign in to bring code from your repositories into Electronics.</p>
       ${S.device ? `<div class="ghcode"><span>Enter this code on GitHub</span><b>${esc(S.device.userCode)}</b><a href="${esc(S.device.verifyUrl)}" target="_blank" rel="noopener" class="btn primary">Open github.com/login/device</a><span class="dim"><i class="spin"></i> Waiting for you to approve…</span><button class="btn" id="ghCancel">Cancel</button></div>`
-        : `<button class="btn primary ghbig" id="ghDevice" ${S.deviceFlow ? '' : 'disabled'}>Sign in with GitHub</button>
-      ${S.deviceFlow ? '' : `<p class="ghnote">To enable this button, create a GitHub OAuth App (Settings ▸ Developer settings ▸ OAuth Apps), tick <b>Enable Device Flow</b>, and put its client ID in <code>.env</code> as <code>GITHUB_CLIENT_ID</code>. Then restart the server.</p>`}
-      <div class="ghor"><span>or use a personal access token</span></div>
+        : `${S.hosted && !S.deviceFlow ? '' : `<button class="btn primary ghbig" id="ghDevice" ${S.deviceFlow ? '' : 'disabled'}>Sign in with GitHub</button>`}
+      ${S.deviceFlow || S.hosted ? '' : `<p class="ghnote">To enable this button, create a GitHub OAuth App (Settings ▸ Developer settings ▸ OAuth Apps), tick <b>Enable Device Flow</b>, and put its client ID in <code>.env</code> as <code>GITHUB_CLIENT_ID</code>. Then restart the server.</p>`}
+      ${S.hosted && !S.deviceFlow ? '<p class="ghp">Sign in with a personal access token. It is kept in an encrypted cookie in this browser, never stored on the server.</p>' : '<div class="ghor"><span>or use a personal access token</span></div>'}
       <input id="ghTok" type="password" placeholder="ghp_… or github_pat_…" spellcheck="false" autocomplete="off">
       <button class="btn" id="ghTokBtn">Sign in with token</button>
       <p class="ghnote"><a href="${TOKEN_URL}" target="_blank" rel="noopener">Create a token</a> with the <b>repo</b> scope (or a fine-grained token with read access to Contents). It stays on the Formframe server and is never stored in the browser.</p>

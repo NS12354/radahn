@@ -1,0 +1,14 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "vite",
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "rewrites": [
+    { "source": "/api/github/:route*", "destination": "/api/github?__route=:route*" }
+  ],
+  "functions": {
+    "api/plan.mjs": { "maxDuration": 300 },
+    "api/part-from-url.mjs": { "maxDuration": 120 },
+    "api/github.mjs": { "maxDuration": 30 }
+  }
+}

@@ -47,6 +47,8 @@ function partApi(): Plugin {
         req.on('end', async () => {
           res.setHeader('content-type', 'application/json');
           try {
+            const stop = (await import('./server/guard.mjs')).guardAI(req.headers);
+            if (stop) { res.statusCode = stop.status; return res.end(JSON.stringify(stop.body)); }
             const { partFromUrl } = await import('./server/part-from-url.mjs');
             const { url } = JSON.parse(body);
             res.end(JSON.stringify(await partFromUrl(String(url ?? '').trim())));
@@ -72,6 +74,8 @@ function planApi(): Plugin {
         req.on('end', async () => {
           res.setHeader('content-type', 'application/json');
           try {
+            const stop = (await import('./server/guard.mjs')).guardAI(req.headers);
+            if (stop) { res.statusCode = stop.status; return res.end(JSON.stringify(stop.body)); }
             const { planWithAI } = await import('./server/plan-ai.mjs');
             res.end(JSON.stringify(await planWithAI(JSON.parse(body).context)));
           } catch (e: any) { res.statusCode = 400; res.end(JSON.stringify({ error: e.message })); }
@@ -87,6 +91,8 @@ export default defineConfig(({ mode }) => {
   for (const k of ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'BLENDER_PATH', 'GITHUB_CLIENT_ID']) if (env[k] && !process.env[k]) process.env[k] = env[k];
   return {
   base: './',
+  // built on Vercel: no local-machine features (Blender link, Claude Code terminal, Arduino compiler)
+  define: { __FF_HOSTED__: JSON.stringify(!!process.env.VERCEL) },
   plugins: [compileApi(), partApi(), planApi(), { name: 'formframe-blender-link', configureServer: blenderApi }, { name: 'formframe-github', configureServer: githubApi }, { name: 'formframe-claude-code', configureServer: claudeTermApi }],
   build: {
     target: 'es2022', chunkSizeWarningLimit: 2000,

@@ -1,4 +1,5 @@
 import type { App } from './app';
+import { aiFetch } from '../app/access';
 import { $, $$, el, esc, toast } from './dom';
 import { setTrackSink } from './track';
 import { healthState } from './health';
@@ -84,7 +85,7 @@ async function updateWithAI() {
   if (busy) return;
   busy = true; render();
   try {
-    const r = await fetch(A.base + 'api/plan', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ context: context() }) }).catch(() => null);
+    const r = await aiFetch(A.base + 'api/plan', { context: context() });
     if (!r || r.status === 404) throw new Error('The AI tracker needs the Formframe server (npm run dev).');
     const j = await r.json().catch(() => ({ error: `Server error ${r.status}` }));
     if (!r.ok || j.error) throw new Error(j.error);

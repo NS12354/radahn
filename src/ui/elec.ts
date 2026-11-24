@@ -1,5 +1,6 @@
 import type { App } from './app';
 import { $, $$, b64decode, el, esc, toast } from './dom';
+import { HOSTED } from '../hosted';
 import { BOARDS, KIT_PRESETS, pinLabel, boardOptions } from '../hw/library/boards';
 import { COMPONENTS } from '../hw/library/components';
 import { runChecks, buildPinMap } from '../hw/checks';
@@ -118,7 +119,7 @@ async function compile(): Promise<string | null> {
       if (r?.ok) { const hex = await r.text(); out.textContent = '✓ Using the precompiled example (no compiler in this build)'; emitCompile('No compiler here, so the precompiled example sketch was used.', true); compiled = { key, hex }; return hex; }
     }
     out.className = 'compile show err';
-    out.textContent = 'No compiler available here. Run `npm run dev` locally (avr-gcc or arduino-cli), or add a .hex exported from Arduino IDE (Sketch → Export Compiled Binary) with the + tab.';
+    out.textContent = HOSTED ? 'The hosted studio can’t compile edited Arduino code. Use the unedited example, add a .hex exported from Arduino IDE (Sketch → Export Compiled Binary) with the + tab, or run Formframe locally with `npm run dev`.' : 'No compiler available here. Run `npm run dev` locally (avr-gcc or arduino-cli), or add a .hex exported from Arduino IDE (Sketch → Export Compiled Binary) with the + tab.';
     emitCompile('Compilation error: no AVR compiler is installed. Run `npm run setup:toolchain`, then restart `npm run dev`.', false);
     return null;
   }

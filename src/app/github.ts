@@ -14,7 +14,7 @@ async function call<T>(path: string, body?: unknown): Promise<T> {
   return j as T;
 }
 export const gh = {
-  status: () => call<{ signedIn: boolean; user: GhUser | null; deviceFlow: boolean }>('status'),
+  status: () => call<{ signedIn: boolean; user: GhUser | null; deviceFlow: boolean; hosted?: boolean }>('status'),
   token: (token: string) => call<{ user: GhUser }>('token', { token }),
   deviceStart: () => call<{ userCode: string; verifyUrl: string; interval: number; expiresIn: number }>('device/start', {}),
   devicePoll: () => call<{ status: 'pending' | 'ok' | 'expired' | 'denied'; interval?: number; user?: GhUser }>('device/poll', {}),

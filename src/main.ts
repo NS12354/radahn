@@ -1,5 +1,6 @@
 import './styles.css';
 import * as THREE from 'three';
+import { HOSTED } from './hosted';
 import { Viewport } from './scene/viewport';
 import { ParametricProduct } from './scene/parametric';
 import { ImportedProduct, formatOf, loadCad } from './scene/imported';
@@ -74,6 +75,7 @@ class FormframeApp implements App {
   private lastThumb = 0;
 
   constructor() {
+    document.body.classList.toggle('hosted', HOSTED);
     this.project = blankProject();
     this.viewport = new Viewport($('#viewport'));
     this.bench = new Bench(this.board(), this.project.env, null);
@@ -364,7 +366,7 @@ class FormframeApp implements App {
     if (this.blender.linked && id !== this.projectId) this.blender.stop();
     this.projectId = id; this.lastThumb = 0;
     this.project = p;
-    if (id) this.blender.resume(id);
+    if (id && !HOSTED) this.blender.resume(id); // the Blender link needs the local dev server
     setTimeout(() => notifyDevice(), 0);
     resetHealth(); resetPlanUndo();
     this.builtSig = p.product.built ? JSON.stringify({ ...p.product.built, rev: 0 }) : '';
