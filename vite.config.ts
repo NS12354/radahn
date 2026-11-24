@@ -84,6 +84,31 @@ function aiKeyApi(): Plugin {
   };
 }
 
+/** Dev-server API: POST /api/assistant { messages } → streamed Claude chat turn (server/assistant.mjs). */
+function assistantApi(): Plugin {
+  return {
+    name: 'formframe-assistant',
+    configureServer(server) {
+      server.middlewares.use('/api/assistant', (req, res) => {
+        if (req.method !== 'POST') { res.statusCode = 405; return res.end(); }
+        let body = '';
+        req.on('data', c => { body += c; if (body.length > 4e6) req.destroy(); });
+        req.on('end', async () => {
+          const a = (await import('./server/guard.mjs')).aiAccess(req.headers);
+          if (a.stop) { res.statusCode = a.stop.status; res.setHeader('content-type', 'application/json'); return res.end(JSON.stringify(a.stop.body)); }
+          let parsed: any;
+          try { parsed = JSON.parse(body); } catch { res.statusCode = 400; return res.end(JSON.stringify({ error: 'Bad JSON' })); }
+          res.setHeader('content-type', 'application/x-ndjson; charset=utf-8'); res.setHeader('cache-control', 'no-store');
+          const send = (ev: unknown) => res.write(JSON.stringify(ev) + '\n');
+          const { assistantTurn } = await import('./server/assistant.mjs');
+          try { await assistantTurn(parsed.messages, a.apiKey, send); } catch (e: any) { send({ t: 'error', error: e.message }); }
+          res.end();
+        });
+      });
+    },
+  };
+}
+
 /** Dev-server API: POST /api/plan { context } → AI progress update (server/plan-ai.mjs). */
 function planApi(): Plugin {
   return {
@@ -115,7 +140,7 @@ export default defineConfig(({ mode }) => {
   base: './',
   // built on Vercel: no local-machine features (Blender link, Claude Code terminal, Arduino compiler)
   define: { __FF_HOSTED__: JSON.stringify(!!process.env.VERCEL) },
-  plugins: [compileApi(), partApi(), planApi(), aiKeyApi(), { name: 'formframe-blender-link', configureServer: blenderApi }, { name: 'formframe-github', configureServer: githubApi }, { name: 'formframe-claude-code', configureServer: claudeTermApi }],
+  plugins: [compileApi(), partApi(), planApi(), aiKeyApi(), assistantApi(), { name: 'formframe-blender-link', configureServer: blenderApi }, { name: 'formframe-github', configureServer: githubApi }, { name: 'formframe-claude-code', configureServer: claudeTermApi }],
   build: {
     target: 'es2022', chunkSizeWarningLimit: 2000,
     rollupOptions: { input: { studio: fileURLToPath(new URL('./index.html', import.meta.url)), modeler: fileURLToPath(new URL('./modeler.html', import.meta.url)), device: fileURLToPath(new URL('./device.html', import.meta.url)) } },

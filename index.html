@@ -177,9 +177,14 @@
         <button class="btn" id="bCompile">Compile</button>
         <button class="btn primary" id="bRun" data-ico="play">Run</button>
       </div>
-      <div class="serhead"><button class="ptab on" id="tabSerial">Serial monitor</button><button class="ptab" id="tabClaude" title="Ask Claude Code to write or fix this code">✻ Claude Code</button><span id="runState"></span><button class="btn" id="bClr">Clear</button></div>
+      <div class="serhead"><button class="ptab on" id="tabSerial">Serial monitor</button><button class="ptab" id="tabAsst" title="Ask Claude about this project, or to write or fix the code">Claude</button><button class="ptab" id="tabClaude" title="Claude Code in a terminal (local only)">Claude Code</button><span id="runState"></span><button class="btn" id="bClr">Clear</button></div>
       <div id="serial"></div>
       <div id="serialIn"><input id="serialInput" placeholder="Send to REPL / Serial  (Enter · Ctrl-C to interrupt)" spellcheck="false"></div>
+      <div id="asstPane">
+        <div class="asbar"><span>Claude sees your board, wiring and code. Changes wait for you to Apply.</span><button class="btn" id="asNew">New chat</button></div>
+        <div id="asLog" aria-live="polite"></div>
+        <div class="asin"><textarea id="asInput" rows="2" placeholder="Ask Claude, e.g. make the LED blink faster" spellcheck="true"></textarea><button class="btn primary" id="asSend">Send</button></div>
+      </div>
       <div id="claudePane">
         <div class="clbar"><span class="clstatus" id="clStatus"></span><span class="cldir" id="clDir" title=""></span><button class="btn" id="clWide">⇤ Wide</button><button class="btn" id="clRestart">Restart</button></div>
         <div id="clAsk" role="alertdialog" aria-label="Approve Claude's hardware change"></div>

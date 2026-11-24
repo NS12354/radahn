@@ -41,7 +41,8 @@ Libraries in lib/: pca9685.py (Servos.angle(ch, deg)), arm.py (Arm.move_to(x, y,
 `;
 }
 
-export function contextDoc(): string {
+/** Board, wiring and robot facts, shared by Claude Code (CLAUDE.md) and the Claude chat. */
+export function projectFacts(): string {
   const e = A.project.electronics, b = A.board();
   const label = (g: number | null) => g == null ? 'not connected' : (b.label?.(g) ?? `${b.pfx}${g}`);
   const lang = b.lang === 'arduino' ? 'Arduino C++ (one .ino sketch, plus optional .h/.cpp beside it)'
@@ -52,19 +53,24 @@ export function contextDoc(): string {
     const pins = Object.entries(c.pins).map(([r, g]) => `${r}→${label(g)}`).join(', ');
     return `- **${d?.name ?? c.type}** (\`${c.uid}\`): ${pins || 'no signal pins'}${d?.i2cAddress ? `, I2C address 0x${d.i2cAddress.toString(16)}` : ''}${c.props?.i2c ? `, I2C address ${c.props.i2c}` : ''}`;
   });
-  return `# ${A.project.name || 'Formframe project'}: firmware
-
-This folder is the code for a hardware prototype in **Formframe**. It is kept in sync with the studio:
-files you change here appear in the studio's code editor right away (and the other way round).
-
-## Board
+  return `## Board
 ${b.name} (${b.chip}). Language: ${lang}
 ${b.notes}
 
 ## Wiring (from the studio's bench)
 ${parts.join('\n') || '- Nothing is wired yet.'}
 
-${robotDoc()}You can change the wiring by editing \`${WIRING_FILE}\` (the catalog of parts and pins is in \`${PARTS_FILE}\`):
+${robotDoc()}`;
+}
+
+export function contextDoc(): string {
+  const b = A.board();
+  return `# ${A.project.name || 'Formframe project'}: firmware
+
+This folder is the code for a hardware prototype in **Formframe**. It is kept in sync with the studio:
+files you change here appear in the studio's code editor right away (and the other way round).
+
+${projectFacts()}You can change the wiring by editing \`${WIRING_FILE}\` (the catalog of parts and pins is in \`${PARTS_FILE}\`):
 - **Moving pins** of parts already on the bench is applied right away.
 - **Adding or removing hardware, or changing the board: ask the user in this chat first and wait for a yes.** Then edit \`${WIRING_FILE}\`; Formframe also shows them an Approve / Decline card and applies nothing until they approve.
 - After each edit Formframe rewrites \`${WIRING_FILE}\` with what is actually wired and a \`_status\` line saying what happened (applied, waiting for approval, declined, or why it was rejected). Re-read it before relying on the change, and update the code to match the pins.

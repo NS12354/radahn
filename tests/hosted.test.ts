@@ -93,3 +93,29 @@ describe('visitor brings their own Anthropic key', () => {
     expect((await aiKeyRoute({ ...base, contentType: 'text/plain', method: 'POST', body: { key }, cookie: '' })).status).toBe(415);
   });
 });
+
+describe('Claude chat (server/assistant.mjs)', () => {
+  it('only accepts code-file edits it can read', async () => {
+    const { _test } = await import('../server/assistant.mjs');
+    const edits = _test.editsOf([
+      { type: 'text', text: 'hi' },
+      { type: 'tool_use', id: 'a', name: 'write_file', input: { path: 'main.py', content: 'print(1)', summary: 'x' } },
+      { type: 'tool_use', id: 'b', name: 'write_file', input: { path: '../etc/passwd', content: 'x', summary: 'x' } },
+      { type: 'tool_use', id: 'c', name: 'write_file', input: { path: 'lib/servo.py' } }, // truncated input
+      { type: 'tool_use', id: 'd', name: 'write_file', input: { path: 'notes.txt', content: 'x', summary: 'x' } },
+    ]);
+    expect(edits.map((e: any) => [e.id, !!e.invalid])).toEqual([['a', false], ['b', true], ['c', true], ['d', true]]);
+  });
+  it('checks the conversation shape', async () => {
+    const { _test } = await import('../server/assistant.mjs');
+    expect(() => _test.checkMessages([])).toThrow();
+    expect(() => _test.checkMessages([{ role: 'assistant', content: 'x' }])).toThrow();
+    expect(() => _test.checkMessages([{ role: 'user', content: 'x' }, { role: 'assistant', content: 'y' }])).toThrow();
+    expect(() => _test.checkMessages([{ role: 'user', content: 'x' }])).not.toThrow();
+  });
+  it('needs the visitor\'s key on the hosted site', async () => {
+    process.env.VERCEL = '1'; process.env.FF_SESSION_SECRET = 's';
+    const { aiAccess } = await import('../server/guard.mjs');
+    expect(aiAccess({}).stop?.body).toMatchObject({ needKey: true });
+  });
+});

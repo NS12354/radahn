@@ -1,5 +1,6 @@
 import './styles.css';
 import * as THREE from 'three';
+import { initAssistant, assistantProjectChanged } from './ui/assistant';
 import { manageAiKey, setAccessBase } from './app/access';
 import { HOSTED } from './hosted';
 import { Viewport } from './scene/viewport';
@@ -95,7 +96,7 @@ class FormframeApp implements App {
     initHealth(this);
     initPlan(this);
     initGitHub(this);
-    initClaude(this);
+    initClaude(this); initAssistant(this);
     initDesign(this, f => this.importCad(f));
     initProto(this);
     initElec(this);
@@ -379,6 +380,7 @@ class FormframeApp implements App {
     this.renderAll();
     renderElec(this);
     this.setMode(this.mode);
+    assistantProjectChanged();
     hideHome(); this.viewport.resize(); toast(msg);
     if (id) setTimeout(() => { if (this.projectId === id && !this.saveT) this.flush(true, false); }, 800); // first thumbnail once rendered
   }

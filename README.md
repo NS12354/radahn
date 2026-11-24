@@ -261,6 +261,7 @@ The studio is deployed on Vercel (static Vite build plus three functions in `api
 | Plan AI, parts from a link | Yes | Visitors use their own Anthropic API key (asked for on first use, or Project menu ▸ Claude API key). It is checked with Anthropic, then kept in an encrypted httpOnly cookie; it is never stored on the server, and requests run on the visitor's account (`FF_OWN_KEY_PER_HOUR`, default 120). The site's own key is never used when hosted. |
 | GitHub | Yes | Personal access token, kept in an AES-GCM encrypted httpOnly cookie (`FF_SESSION_SECRET`). Device sign-in also works if `GITHUB_CLIENT_ID` is set. |
 | Arduino compile | No | Falls back to the precompiled example or an uploaded `.hex`. MicroPython and Python boards run fully in the browser. |
+| Claude chat (Electronics ▸ Claude tab) | Yes | Ask about the board, wiring and code; Claude proposes file changes you Apply or Decline. Runs on the visitor's own key, streamed from `api/assistant`. |
 | Blender link, Claude Code terminal | No | They run programs on the machine hosting the server, so they're hidden on the hosted build. |
 
 Vercel environment variables: `FF_SESSION_SECRET` (optional: `FF_OWN_KEY_PER_HOUR`, `GITHUB_CLIENT_ID`). Local `npm run dev` uses `ANTHROPIC_API_KEY` from `.env` when no own key is saved.
