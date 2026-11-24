@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { Product, type Role } from './product';
 import { FINISHES } from './parametric';
-import type { BuiltModel, BuiltPart, World } from '../app/project';
+import { movable, type BuiltModel, type BuiltPart, type World } from '../app/project';
 import { instances } from '../app/fit';
 import { partMeshGeometry } from './mesh';
 import { screenPart, type ScreenPick } from '../app/screenpart';
@@ -113,7 +113,7 @@ export function drawWorld(w: World, g: THREE.Group, picks: Map<number, THREE.Mes
   w.obstacles.forEach((o, i) => {
     const m = new THREE.Mesh(o.shape === 'cyl' ? new THREE.CylinderGeometry(o.size[0] / 2, o.size[0] / 2, o.size[1], 32) : new THREE.BoxGeometry(o.size[0], o.size[1], o.size[2]), new THREE.MeshStandardMaterial({ color: new THREE.Color(o.color ?? '#c8743a'), roughness: 0.7 }));
     m.position.set(o.pos[0], o.size[1] / 2, o.pos[1]); m.rotation.y = (o.rot ?? 0) * Math.PI / 180; m.castShadow = true;
-    if (o.pick) picks.set(i, m);
+    if (movable(o)) picks.set(i, m);
     g.add(m);
   });
   g.traverse((o: any) => { o.userData.world = true; if (o.isMesh) { o.receiveShadow = true; o.castShadow = !(o.geometry instanceof THREE.PlaneGeometry); } });

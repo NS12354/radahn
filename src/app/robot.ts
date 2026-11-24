@@ -15,7 +15,7 @@
  *     it falls onto whatever is below.
  */
 import * as THREE from 'three';
-import type { BuiltPart, BuiltModel, Joint, World } from './project';
+import { movable, type BuiltPart, type BuiltModel, type Joint, type World } from './project';
 import { BodyPose, LegContact, clampJoint, diffDrive, driveBody, footRest, forwardKinematics, onTrack, raycastWorld, restMatrix, sensorRay, wheelsOf } from './kinematics';
 import { COMPONENTS, SERVO_TYPES } from '../hw/library/components';
 import { Physics, loadPhysics, physicsReady, type PhysicsWorld } from './physics';
@@ -32,7 +32,7 @@ const MOTOR_DPS: Record<string, number> = { contservo: 780, default: 1200 };
 /** Two prismatic fingers driven by the same actuator, on the same parent. */
 interface Gripper { a: BuiltPart; b: BuiltPart; parent: string }
 /** A pickable block in the world: pose in world mm, and the hand holding it (pose relative to the hand). */
-export interface WorldObject { index: number; size: THREE.Vector3; shape: 'box' | 'cyl'; m: THREE.Matrix4; vy: number; held?: { by: string; rel: THREE.Matrix4; sim?: RobotSim } }
+export interface WorldObject { index: number; size: THREE.Vector3; shape: 'box' | 'cyl'; m: THREE.Matrix4; vy: number; pick?: boolean; held?: { by: string; rel: THREE.Matrix4; sim?: RobotSim } }
 
 export interface JointState { id: string; name: string; joint: Joint; q: number; target: number; driven: boolean; sag: number; torque?: number; load?: number }
 
@@ -49,7 +49,7 @@ export class RobotSim {
   stalled = false;
   /** ROS /cmd_vel (mm/s, rad/s): drives a wheeled robot while no firmware is running. */
   cmdVel: { v: number; w: number; t: number } | null = null;
-  /** Pickable blocks (world obstacles with pick: true). */
+  /** Things in the world that move (every obstacle that isn't fixed): blocks, boxes, crates. */
   objects: WorldObject[] = [];
   private objSig = '';
   /**
@@ -90,6 +90,7 @@ export class RobotSim {
     if (!force && sig === this.objSig) return;
     this.objSig = sig;
     this.objects = makeObjects(this.world);
+    this.rebuildPhysics(); // new / removed / changed objects: the physics world has to know about them
   }
   /** The world this robot is in: its scene's, or its own. */
   get world(): World | undefined { return this.sceneWorld ?? this.spec?.world; }
@@ -98,7 +99,7 @@ export class RobotSim {
     const w = this.world; if (!w) return w;
     if (!this.objects.length && !this.others.length) return w;
     const blocks = this.objects.map(o => { const p = new THREE.Vector3().setFromMatrixPosition(o.m); return { shape: o.shape, pos: [p.x, p.z] as [number, number], size: [o.size.x, p.y + o.size.y / 2, o.size.z] as [number, number, number] }; });
-    return { ...w, obstacles: [...w.obstacles.filter(o => !o.pick), ...blocks, ...this.others] };
+    return { ...w, obstacles: [...w.obstacles.filter(o => !movable(o)), ...blocks, ...this.others] };
   }
   /** Rough radius of the robot's footprint (mm), for bumping into other robots. */
   radius() { return this.footprint(); }
@@ -217,6 +218,7 @@ export class RobotSim {
       const qa = this.q.get(g.a.id) ?? 0, qb = this.q.get(g.b.id) ?? 0;
       let pressing: WorldObject | null = null;
       for (const o of this.objects) {
+        if (!o.pick) continue; // only things small enough to be picked up
         if (o.held && (o.held.by !== key || (o.held.sim ?? this) !== this)) continue;
         const rest = o.held ? o.held.rel.clone() : inv.clone().multiply(o.m), c = new THREE.Vector3().setFromMatrixPosition(rest), oq = new THREE.Quaternion().setFromRotationMatrix(rest);
         const pen = (qa: number, qb: number) => {
@@ -389,12 +391,12 @@ export class RobotSim {
     void dt;
   }
 }
-/** The pickable blocks a world starts with (obstacles with pick: true), by obstacle index. */
+/** The movable things a world starts with (every obstacle that isn't fixed), by obstacle index. */
 export function makeObjects(world: World | undefined): WorldObject[] {
   return (world?.obstacles ?? []).flatMap((o, index) => {
-    if (!o.pick) return [];
+    if (!movable(o)) return [];
     const m = new THREE.Matrix4().compose(new THREE.Vector3(o.pos[0], o.size[1] / 2, o.pos[1]), new THREE.Quaternion().setFromAxisAngle(UP, (o.rot ?? 0) * D2R), ONE);
-    return [{ index, shape: o.shape, size: new THREE.Vector3(...o.size), m, vy: 0 }];
+    return [{ index, shape: o.shape, size: new THREE.Vector3(...o.size), m, vy: 0, pick: !!o.pick }];
   });
 }
 /** Let go of a block: it keeps its place and heading, stands upright, and falls. */
@@ -417,7 +419,7 @@ export function dropObjects(objects: WorldObject[], world: World | undefined, dt
 function supportUnder(objects: WorldObject[], world: World | undefined, self: WorldObject, x: number, z: number) {
   let top = 0;
   for (const ob of world?.obstacles ?? []) {
-    if (ob.pick) continue;
+    if (movable(ob)) continue;
     const dx = x - ob.pos[0], dz = z - ob.pos[1], a = -(ob.rot ?? 0) * D2R, lx = dx * Math.cos(a) + dz * Math.sin(a), lz = -dx * Math.sin(a) + dz * Math.cos(a);
     const inside = ob.shape === 'cyl' ? Math.hypot(dx, dz) <= ob.size[0] / 2 : Math.abs(lx) <= ob.size[0] / 2 && Math.abs(lz) <= ob.size[2] / 2;
     if (inside) top = Math.max(top, ob.size[1]);

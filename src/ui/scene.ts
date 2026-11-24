@@ -25,7 +25,7 @@ import { RP2040Runtime } from '../hw/runtimes/rp2040';
 import { AVRRuntime } from '../hw/runtimes/avr';
 import { SimPythonRuntime } from '../hw/runtimes/sim-python';
 import { b64decode } from './dom';
-import type { Project, World } from '../app/project';
+import { MATERIALS, materialOf, obstacleGrams, type Project, type World } from '../app/project';
 
 export interface SceneHost {
   base: string;
@@ -317,7 +317,7 @@ function renderSide() {
     }));
   });
   const objs = $('#swObjs');
-  objs.innerHTML = scene.world.obstacles.map((o, i) => `<span class="rpobj" title="${o.pick ? 'A gripper can pick this up' : 'Fixed in place'}"><i style="background:${esc(o.color ?? '#c8743a')}"></i>${esc(o.name ?? (o.shape === 'cyl' ? 'Cylinder' : 'Box'))}<button class="rpdel" data-i="${i}" aria-label="Remove">×</button></span>`).join('') || '<span class="dim">Nothing on the floor</span>';
+  objs.innerHTML = scene.world.obstacles.map((o, i) => `<span class="rpobj" title="${esc(objTitle(o))}"><i style="background:${esc(o.color ?? '#c8743a')}"></i>${esc(o.name ?? (o.shape === 'cyl' ? 'Cylinder' : 'Box'))}<button class="rpdel" data-i="${i}" aria-label="Remove">×</button></span>`).join('') || '<span class="dim">Nothing on the floor</span>';
   objs.querySelectorAll<HTMLElement>('.rpdel').forEach(b => (b.onclick = () => { if (twin!.running) { toast('Stop the robots before changing the world'); return; } const w: World = { ...scene!.world, obstacles: scene!.world.obstacles.filter((_, i) => i !== +b.dataset.i!) }; twin!.setWorld(w); changed(); renderWorld(); renderSide(); }));
   ($('#swRunAll') as HTMLButtonElement).disabled = !views.length;
   liveSide(); renderLog();
@@ -402,11 +402,17 @@ function addBlock() {
     const b = pickBlock(at(ARM_PICK)); b.rot = Math.round(Math.atan2(b.pos[0] - x, b.pos[1] - z) * 180 / Math.PI);
     obs.push(b);
     const pad = at(ARM_PLACE);
-    if (!obs.some(o => !o.pick && Math.hypot(o.pos[0] - pad[0], o.pos[1] - pad[1]) < 40)) obs.push({ shape: 'cyl', pos: pad, size: [60, 4, 60], color: '#33c27f', name: 'Pad' });
+    if (!obs.some(o => materialOf(o) === 'fixed' && Math.hypot(o.pos[0] - pad[0], o.pos[1] - pad[1]) < 40)) obs.push({ shape: 'cyl', pos: pad, size: [60, 4, 60], color: '#33c27f', name: 'Pad' });
     toast(`Put a block where ${v.robot.def.name} reaches for it, and a pad to set it on`);
   } else {
     const s = freeSpot(scene); obs.push(pickBlock([s.x, s.z]));
     toast('Added a block. Select an arm first to put one within its reach');
   }
   twin.setWorld({ ...w, obstacles: obs }); changed(); renderWorld(); renderSide();
+}
+
+/** 'Cardboard box · 320 g', or 'Fixed in place'. */
+export function objTitle(o: World['obstacles'][number]) {
+  const m = materialOf(o);
+  return m === 'fixed' ? 'Fixed in place' : `${MATERIALS[m].label} · ${obstacleGrams(o)} g${o.pick ? ' · a gripper can pick it up' : ' · robots can push it'}`;
 }

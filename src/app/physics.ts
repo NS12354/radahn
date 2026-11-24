@@ -9,8 +9,11 @@
  * stiff position motors whose target is clamped so the force never exceeds the
  * servo's stall torque, so a weak servo really sags and stalls; wheels are
  * velocity motors on high-friction rubber, so traction is real. The floor,
- * walls and obstacles are fixed colliders; obstacles marked pickable (the arm's
- * blocks) are dynamic and can be pushed, gripped and carried.
+ * walls and anything marked fixed are static colliders; every other obstacle is a
+ * rigid body weighing what its material and size say (a foam block, a cardboard
+ * box, a wooden crate), so robots push, topple or stall against it, and grippers
+ * hold it by friction. Robots and objects use continuous collision detection, so
+ * nothing tunnels through anything at speed.
  *
  * A PhysicsWorld holds the engine and the surroundings. A robot's Physics adds
  * its links and joints to a world: its own (one robot), or a scene's shared
@@ -20,7 +23,7 @@
  */
 import * as THREE from 'three';
 import type RAPIER_T from '@dimforge/rapier3d-compat';
-import type { BuiltModel, BuiltPart, Joint, World } from './project';
+import { MATERIALS, materialOf, movable, obstacleGrams, type BuiltModel, type BuiltPart, type Joint, type World } from './project';
 import { restMatrix } from './kinematics';
 
 let R: typeof RAPIER_T | null = null;
@@ -76,11 +79,13 @@ export class PhysicsWorld {
     w.obstacles.forEach((o, index) => {
       const [sx, sy, sz] = o.size.map(v => v * MM);
       const desc = o.shape === 'cyl' ? r.ColliderDesc.cylinder(sy / 2, sx / 2) : r.ColliderDesc.cuboid(sx / 2, sy / 2, sz / 2);
-      desc.setFriction(0.8);
+      desc.setFriction(MATERIALS[materialOf(o)].friction).setRestitution(0.1);
       const rot = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), (o.rot ?? 0) * Math.PI / 180);
-      if (o.pick) {
-        const body = this.world.createRigidBody(r.RigidBodyDesc.dynamic().setTranslation(o.pos[0] * MM, sy / 2, o.pos[1] * MM).setRotation({ x: rot.x, y: rot.y, z: rot.z, w: rot.w }).setCanSleep(false));
-        desc.setDensity(400).setCollisionGroups(BLOCK_GROUPS); // light foam / plastic block
+      if (movable(o)) {
+        const body = this.world.createRigidBody(r.RigidBodyDesc.dynamic().setTranslation(o.pos[0] * MM, sy / 2, o.pos[1] * MM).setRotation({ x: rot.x, y: rot.y, z: rot.z, w: rot.w })
+          .setCanSleep(false).setCcdEnabled(true).setLinearDamping(0.05).setAngularDamping(0.1));
+        const v = o.shape === 'cyl' ? Math.PI * (sx / 2) * (sz / 2) * sy : sx * sy * sz;
+        desc.setDensity(obstacleGrams(o) / 1000 / Math.max(1e-9, v)).setCollisionGroups(BLOCK_GROUPS);
         this.world.createCollider(desc, body);
         this.movable.push({ index, body, size: o.size, shape: o.shape });
       } else this.world.createCollider(desc.setTranslation(o.pos[0] * MM, sy / 2, o.pos[1] * MM).setRotation({ x: rot.x, y: rot.y, z: rot.z, w: rot.w }).setCollisionGroups(FIXED_GROUPS), fixed);
@@ -154,7 +159,7 @@ export class Physics {
       const isRoot = !h.parent || !byId.has(h.parent);
       const desc = (isRoot && spec.mobile === 'fixed' ? r.RigidBodyDesc.fixed() : r.RigidBodyDesc.dynamic())
         .setTranslation(wp.x * MM, wp.y * MM, wp.z * MM).setRotation({ x: q.x, y: q.y, z: q.z, w: q.w })
-        .setLinearDamping(0.05).setAngularDamping(0.2).setCanSleep(false);
+        .setLinearDamping(0.05).setAngularDamping(0.2).setCanSleep(false).setCcdEnabled(true);
       const body = this.world.createRigidBody(desc);
       const link: Link = { head: h, parts: members, origin, body };
       for (const p of members) {
@@ -275,7 +280,7 @@ function colliderFor(r: typeof RAPIER_T, p: BuiltPart, origin: THREE.Vector3): {
     const rad = Math.max(w, h) / 2, len = Math.max(d, 0.0005);
     desc = r.ColliderDesc.cylinder(len / 2, rad); v = Math.PI * rad * rad * len;
     q.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2));
-  } else if (p.shape === 'rect') return null;
+  } else if (p.shape === 'rect') { desc = r.ColliderDesc.cuboid(w / 2, h / 2, 0.0005); v = w * h * 0.001; } // a flat plate: thin but solid
   else { desc = r.ColliderDesc.cuboid(w / 2, h / 2, Math.max(d, 0.0005) / 2); v = w * h * d; }
   desc.setTranslation(pos.x, pos.y, pos.z).setRotation({ x: q.x, y: q.y, z: q.z, w: q.w });
   return { desc, vol: Math.max(1e-9, v) };

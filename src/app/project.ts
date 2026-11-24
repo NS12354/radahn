@@ -95,11 +95,39 @@ export interface Joint {
 /** A robot's surroundings: a floor, things to bump into and a line to follow (mm, Y up). */
 export interface World {
   size: number;
-  /** pos: XZ centre (mm); size: [width, height, depth]; rot: yaw (degrees about Y); pick: a gripper can pick it up. */
-  obstacles: { shape: 'box' | 'cyl'; pos: [number, number]; size: [number, number, number]; color?: string; rot?: number; pick?: boolean; name?: string }[];
+  /**
+   * pos: XZ centre (mm); size: [width, height, depth]; rot: yaw (degrees about Y); pick: a gripper can pick it up.
+   * material: what it's made of, which sets its weight and grip (fixed = bolted down / a wall); mass overrides the weight (g).
+   */
+  obstacles: Obstacle[];
   /** A dark line on the floor (closed loop through these XZ points). */
   track?: { points: [number, number][]; width: number };
 }
+export type ObstacleMaterial = 'fixed' | 'foam' | 'cardboard' | 'plastic' | 'wood' | 'metal';
+export interface Obstacle { shape: 'box' | 'cyl'; pos: [number, number]; size: [number, number, number]; color?: string; rot?: number; pick?: boolean; name?: string; material?: ObstacleMaterial; mass?: number }
+/**
+ * Effective density (kg/m³, for the object as a whole: a cardboard box is mostly air) and
+ * friction against rubber/plastic. Fixed objects never move.
+ */
+export const MATERIALS: Record<ObstacleMaterial, { label: string; density: number; friction: number }> = {
+  fixed: { label: 'Fixed in place', density: 0, friction: 0.8 },
+  foam: { label: 'Foam', density: 30, friction: 0.7 },
+  cardboard: { label: 'Cardboard box', density: 70, friction: 0.5 },
+  plastic: { label: 'Plastic', density: 400, friction: 0.4 },
+  wood: { label: 'Wood', density: 600, friction: 0.5 },
+  metal: { label: 'Metal', density: 1800, friction: 0.35 },
+};
+/** What an obstacle is made of: pickable blocks default to plastic, everything else stays put unless told otherwise. */
+export const materialOf = (o: Obstacle): ObstacleMaterial => o.material ?? (o.pick ? 'plastic' : 'fixed');
+/** Does it move when pushed (a rigid body), rather than being part of the room? */
+export const movable = (o: Obstacle) => materialOf(o) !== 'fixed';
+/** Its weight in grams (from its size and material, unless set). */
+export function obstacleGrams(o: Obstacle): number {
+  if (o.mass) return o.mass;
+  const [x, y, z] = o.size.map(v => v / 1000), vol = o.shape === 'cyl' ? Math.PI * (x / 2) * (z / 2) * y : x * y * z;
+  return Math.round(vol * MATERIALS[materialOf(o)].density * 1000);
+}
+
 export interface RobotSpec {
   kind: 'arm' | 'rover' | 'legs' | 'custom';
   /** How the body moves: bolted down, on wheels, or on legs. */
