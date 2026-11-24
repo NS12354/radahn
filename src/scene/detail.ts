@@ -113,7 +113,11 @@ function plate(w: number, h: number, t: number, radius: number, holes: { x: numb
   s.lineTo(x0 + r, y0 + h); s.quadraticCurveTo(x0, y0 + h, x0, y0 + h - r); s.lineTo(x0, y0 + r); s.quadraticCurveTo(x0, y0, x0 + r, y0);
   for (const hl of holes) { const p = new THREE.Path(); p.absarc(hl.x, hl.y, hl.r, 0, Math.PI * 2, true); s.holes.push(p); }
   const b = Math.min(bevel, t / 3);
-  return new THREE.ExtrudeGeometry(s, { depth: t - 2 * b, bevelEnabled: b > 0, bevelThickness: b, bevelSize: b, bevelSegments: 2, curveSegments: 24 }).translate(0, 0, -(t - 2 * b) / 2);
+  const g = new THREE.ExtrudeGeometry(s, { depth: t - 2 * b, bevelEnabled: b > 0, bevelThickness: b, bevelSize: b, bevelSegments: 2, curveSegments: 24 }).translate(0, 0, -(t - 2 * b) / 2);
+  // texture once across the face (extrusions come with UVs in shape units)
+  const pos = g.attributes.position, uv = g.attributes.uv;
+  for (let i = 0; i < pos.count; i++) uv.setXY(i, (pos.getX(i) + w / 2) / w, (pos.getY(i) + h / 2) / h);
+  return g;
 }
 
 // ------------------------------------------------------------------ builders

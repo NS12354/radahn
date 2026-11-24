@@ -12,6 +12,7 @@ import { deleteProject, getMeta, loadProject, migrateLegacy, newProjectId, saveP
 import { EmptyProduct } from './scene/empty';
 import { BuiltProduct } from './scene/built';
 import { initRobot, robotFrame } from './ui/robot';
+import { initViewTools } from './ui/viewtools';
 import { robotProject, type RobotKind } from './app/robots';
 import { ElectronicsView } from './scene/electronics';
 import { gizmoBusy, initModeler, newBuiltModel, runAutoBuild, syncGizmo } from './ui/modeler';
@@ -90,6 +91,7 @@ class FormframeApp implements App {
     initProto(this);
     initElec(this);
     initRobot(this);
+    initViewTools(this);
     this.wireUI();
     this.renderAll();
     this.setMode('design');

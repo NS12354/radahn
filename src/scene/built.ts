@@ -131,7 +131,7 @@ export class BuiltProduct extends Product {
     this.worldG.traverse((o: any) => { o.geometry?.dispose(); o.material?.dispose?.(); });
     this.worldG.clear();
     if (!w) { this.mm.remove(this.worldG); return; }
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(w.size, w.size), new THREE.MeshPhysicalMaterial({ color: 0xcfcbc3, roughness: 0.82, clearcoat: 0.08 }));
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(w.size, w.size), new THREE.MeshPhysicalMaterial({ color: 0x9d9a94, roughness: 0.85, clearcoat: 0.05 }));
     floor.rotation.x = -Math.PI / 2; floor.position.y = -0.2; floor.receiveShadow = true;
     this.worldG.add(floor);
     const grid = new THREE.GridHelper(w.size, Math.round(w.size / 100), 0xb5b1a8, 0xc7c3ba); grid.position.y = -0.1; this.worldG.add(grid);
@@ -206,7 +206,7 @@ export class BuiltProduct extends Product {
       for (const inst of instances(p)) {
         const im = new THREE.Matrix4().compose(new THREE.Vector3(...inst.pos), new THREE.Quaternion().setFromEuler(new THREE.Euler(...inst.rot.map(v => v * D2R) as [number, number, number])), new THREE.Vector3(1, 1, 1));
         const local = inv.clone().multiply(im);
-        for (const c of detail.children as THREE.Mesh[]) { const m = (c.material as THREE.Material).clone(); this.ownMats.push(m); const mesh = new THREE.Mesh(c.geometry, m); local.decompose(mesh.position, mesh.quaternion, mesh.scale); mesh.userData.part = p.id; root.add(mesh); }
+        for (const c of detail.children as THREE.Mesh[]) { const m = (c.material as THREE.Material).clone(); this.ownMats.push(m); const mesh = new THREE.Mesh(c.geometry, m); local.decompose(mesh.position, mesh.quaternion, mesh.scale); mesh.userData.part = p.id; mesh.castShadow = mesh.receiveShadow = true; root.add(mesh); }
       }
       return root;
     }
@@ -231,7 +231,7 @@ export class BuiltProduct extends Product {
       for (const { g, m } of geos) {
         const mesh = new THREE.Mesh(g, m);
         local.decompose(mesh.position, mesh.quaternion, mesh.scale);
-        mesh.userData.part = p.id;
+        mesh.userData.part = p.id; mesh.castShadow = mesh.receiveShadow = !(p.finish === "clear");
         root.add(mesh);
       }
     }

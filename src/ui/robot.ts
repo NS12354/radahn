@@ -37,7 +37,7 @@ const model = (): BuiltModel | null => (A.product instanceof BuiltProduct ? A.pr
 
 export function initRobot(app: App) {
   A = app;
-  const panel = el('div', 'robotp'); panel.id = 'robotPanel';
+  const panel = el('div', 'robotp'); panel.id = 'robotPanel'; panel.style.display = 'none';
   $('#viewport').appendChild(panel);
 }
 
