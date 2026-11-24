@@ -110,7 +110,7 @@ export class DamageTracker {
       }
     }
   }
-  get state(): Record<string, PartDamage> { return (this.model.damage ??= {}); }
+  get state(): Record<string, PartDamage> { return this.model.damage ?? {}; }
 
   /** Take one frame's impacts. Returns the keys that broke just now. */
   apply(imp: Impacts): string[] {
@@ -138,7 +138,7 @@ export class DamageTracker {
       if (l.r > st.worst.value / st.worst.rating) st.worst = { kind: l.kind, value: Math.round(l.value * 10) / 10, rating: Math.round(l.rating * 10) / 10 };
       st.level = Math.round(st.level * 1000) / 1000;
       st.status = statusOf(st.level);
-      this.state[key] = st;
+      (this.model.damage ??= {})[key] = st;
       if (was < 1 && st.level >= 1) broke.push(key);
     }
     return broke;

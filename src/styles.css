@@ -837,3 +837,5 @@ aside{background:var(--panel)}
 .crdot.broken{background:var(--bad)} .crdot.damaged{background:var(--warn)} .crdot.knock{background:#fbbc04} .crdot.ok{background:var(--ok)}
 .crmore{border-top:1px solid var(--line)} .crmore summary{padding:8px 12px;color:var(--dim);font-size:12px;cursor:pointer;list-style-position:inside}
 .crmore summary:hover{color:var(--text)}
+/* the robot panel stops above the view tools in the bottom corner */
+.robotp{max-height:calc(100% - 84px)}

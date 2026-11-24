@@ -110,7 +110,7 @@ function render() {
   });
   $('#rpRec').onclick = () => {
     const poses = (sp.poses ??= []);
-    poses.push({ name: `Pose ${poses.length + 1}`, joints: Object.fromEntries(sim!.joints.map(j => { const m = sim!.manual.get(j.id); return [j.id, Math.round((m != null && Math.abs(m - j.q) < 3 ? m : j.q) * 10) / 10]; })) });
+    poses.push({ name: `Pose ${poses.length + 1}`, joints: Object.fromEntries(sim!.joints.map(j => [j.id, Math.round((sim!.manual.get(j.id) ?? j.target) * 10) / 10])) });
     A.changed('product'); render(); toast(`Recorded pose ${poses.length}`);
   };
   $('#rpClr').onclick = () => { sp.poses = []; A.changed('product'); render(); };

@@ -124,6 +124,38 @@ How it works (`src/app/kinematics.ts`, `src/app/robot.ts`):
 - Continuous collision detection stops fast parts tunnelling through thin objects.
 - *Off* is a faster ideal-motion model. It ignores weight and lets robots pass through things.
 
+**Crash tests and damage** (`src/app/damage.ts`, `src/app/crash.ts`; Review → *Crash test*).
+
+- **Tests.** Drop a robot or device from any height and orientation (flat, face down, edge, corner …), drive or throw it into a wall, or hit it with an object of any mass and speed. The test plays out in the 3D view.
+- **What gets measured.** The physics records three loads for every part, averaged over about 2 ms the way a real impact with some give is:
+  - peak contact force (N);
+  - deceleration (g);
+  - for servo-driven joints, the twist on the gears (N·m).
+- **Ratings.** Each part is rated by what it is:
+  - display glass and sensor transducers crack;
+  - PCB solder joints fail under shock;
+  - Li-ion cells dent or puncture, which is flagged as unsafe;
+  - enclosures crack, with strength scaling with wall thickness;
+  - servo gears strip at about 2.5× (plastic) or 3.5× (metal) stall torque;
+  - brackets, wheels and fingers snap off.
+- **Damage levels.**
+  - Under 50% of a rating, nothing shows.
+  - 50–80% is a knock.
+  - 80–100% is damaged: it still works, but is weakened.
+  - At 100% the part breaks.
+  - Repeated knocks add fatigue.
+- **What breaks does.** Damage is saved on the model and tinted on it (amber for damaged, red for broken) until **Repair**.
+  - Stripped servos go limp.
+  - Snapped links fall off.
+  - Broken sensors read nothing.
+  - A broken board, battery or motor driver means the firmware can't move anything.
+- **Live damage.** Robots also take damage from hard collisions while they run; normal driving and walking don't cause any.
+- **Calibration examples.**
+  - The auto-built thermostat survives 0.3 m. A 1 m flat drop cracks the display glass; 1.5 m face down also weakens the bezel.
+  - The robot dog shrugs off 0.3 m; a 1 m drop strips its shoulder servos.
+  - A rover bumping a wall at 0.5 m/s is fine.
+- The ratings are engineering ballparks for hobby hardware: good for comparing designs and finding weak spots, not for certifying a product.
+
 **Beginner view.**
 - **Simple** (the default) hides expert settings: Plan and GitHub, Blender, part import from links, URDF/ROS, mass, and advanced inspector rows. **Advanced** shows everything.
 - **▶ Run** in the top bar works from any tab. The code keeps running in Design and Review, so you can watch the robot.

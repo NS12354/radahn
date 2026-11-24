@@ -116,7 +116,9 @@ export class PhysicsWorld {
       this.world.step(this.events);
       this.events.drainContactForceEvents(e => {
         const F = e.totalForceMagnitude(), d = e.maxForceDirection();
-        for (const c of [e.collider1(), e.collider2()]) this.owner.get(c)?.contact(c, F, d);
+        // the force on collider 2 points along d, on collider 1 against it
+        const c1 = e.collider1(), c2 = e.collider2();
+        this.owner.get(c1)?.contact(c1, F, d, -1); this.owner.get(c2)?.contact(c2, F, d, 1);
       });
       for (const rb of this.robots) rb.sampleShock(h);
     }
@@ -272,13 +274,13 @@ export class Physics {
     }
   }
   /** A contact-force event on one of this robot's colliders (N, direction of the largest contact force). */
-  contact(handle: number, F: number, dir: { x: number; y: number; z: number }) {
+  contact(handle: number, F: number, dir: { x: number; y: number; z: number }, sign = 1) {
     const id = this.partOfCollider.get(handle); if (!id) return;
     this.subForce.set(id, (this.subForce.get(id) ?? 0) + F);
     // the twist this contact puts on every joint between the part and the body: |(contact − pivot) × F · axis|
     const link = this.linkOfPart.get(id); if (!link) return;
     const col = this.world.getCollider(handle), ct = col.translation(), c = new THREE.Vector3(ct.x, ct.y, ct.z);
-    const force = new THREE.Vector3(dir.x, dir.y, dir.z).multiplyScalar(F);
+    const force = new THREE.Vector3(dir.x, dir.y, dir.z).multiplyScalar(F * sign);
     let L: Link | undefined = link;
     for (let n = 0; L && n < 32; n++) {
       const pj = this.joints.find(j => j.link === L); if (!pj) break;
@@ -286,7 +288,7 @@ export class Physics {
         const t = pj.link.body.translation(), q = pj.link.body.rotation(), rq = new THREE.Quaternion(q.x, q.y, q.z, q.w);
         const piv = new THREE.Vector3(...pj.joint.pivot).sub(pj.link.origin).multiplyScalar(MM).applyQuaternion(rq).add(new THREE.Vector3(t.x, t.y, t.z));
         const axis = new THREE.Vector3(...pj.joint.axis).normalize().applyQuaternion(rq);
-        const tau = Math.abs(c.clone().sub(piv).cross(force).dot(axis));
+        const tau = c.clone().sub(piv).cross(force).dot(axis); // signed: a squeeze from both sides cancels, as on the real gears
         this.subTwist.set(pj.id, (this.subTwist.get(pj.id) ?? 0) + tau);
       }
       L = pj.parent;
@@ -301,7 +303,7 @@ export class Physics {
       if (avg > (this.imp.force.get(id) ?? 0)) this.imp.force.set(id, avg);
     }
     for (const id of new Set([...this.subTwist.keys(), ...[...this.ring.keys()].filter(k => k.startsWith('t:')).map(k => k.slice(2))])) {
-      const avg = push('t:' + id, this.subTwist.get(id) ?? 0);
+      const avg = Math.abs(push('t:' + id, this.subTwist.get(id) ?? 0));
       if (avg > (this.imp.twist.get(id) ?? 0)) this.imp.twist.set(id, avg);
     }
     this.subForce.clear(); this.subTwist.clear();
