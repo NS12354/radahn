@@ -40,20 +40,22 @@ function arm(board: BoardDef) {
   const pca = comp('pca9685', { SDA: sda, SCL: scl }, 0, { servos: [0, 1, 2, 3].map(ch => ({ ch, type: 'mg996r' })).concat([{ ch: 4, type: 'sg90' }]) });
   const bec = comp('bec', {}, 1, { amps: 10 });
   const drive = (ch: number, o: Partial<NonNullable<Joint['drive']>> = {}) => ({ comp: pca.uid, channel: ch, ...o });
-  const base = add('Base plate', 'rbox', [140, 8, 140], [0, 4, 0], { param: 8, color: DARK });
-  add('Controller', 'rbox', [70, 22, 46], [0, 19, -48], { param: 4, color: '#1f4d34', parent: base.id, kind: 'internal', comp: 'board' });
-  add('PCA9685', 'box', [62, 4, 25], [0, 32, -48], { color: SERVO, parent: base.id, kind: 'internal', comp: pca.uid });
-  const turn = add('Turntable', 'cyl', [80, 80, 12], [0, 14, 0], { rot: [90, 0, 0], color: WHITE, parent: base.id, joint: joint('revolute', [0, 8, 0], [0, 1, 0], { min: -90, max: 90, drive: drive(0) }) });
-  add('Base servo', 'box', [40, 20, 38], [0, 30, 0], { color: SERVO, parent: turn.id });
-  const sh = add('Shoulder bracket', 'box', [44, 30, 30], [0, 45, 0], { color: WHITE, parent: turn.id });
+  const base = add('Base plate', 'rbox', [140, 8, 140], [0, 4, 0], { param: 8, color: DARK, detail: 'baseplate' });
+  add(board.name, 'box', [51, 21, 5], [-30, 10.5, -52], { rot: [-90, 0, 0], parent: base.id, kind: 'internal', comp: 'board', detail: `pcb:${board.id}` });
+  add('PCA9685', 'box', [62, 25, 10], [30, 13, -50], { rot: [-90, 0, 0], parent: base.id, kind: 'internal', comp: pca.uid, detail: 'module:pca9685' });
+  add('Servo supply', 'box', [30, 20, 12], [45, 14, 45], { rot: [-90, 0, 0], parent: base.id, kind: 'internal', comp: bec.uid, detail: 'module:bec' });
+  const turn = add('Turntable', 'cyl', [80, 80, 12], [0, 14, 0], { rot: [90, 0, 0], color: WHITE, parent: base.id, detail: 'turntable', joint: joint('revolute', [0, 8, 0], [0, 1, 0], { min: -90, max: 90, drive: drive(0) }) });
+  const sh = add('Shoulder servo', 'box', [40, 38, 20], [0, 42, 0], { rot: [0, 0, -90], color: '#141518', parent: turn.id, detail: 'servo:mg996r' });
   // links: shoulder (y 45) → elbow 130 mm → wrist 120 mm → gripper tip 75 mm (matches lib/arm.py)
-  const upper = add('Upper arm', 'rbox', [26, 136, 22], [0, 110, 0], { param: 4, color: ORANGE, parent: sh.id, joint: joint('revolute', [0, 45, 0], [1, 0, 0], { min: -90, max: 90, drive: drive(1) }) });
-  add('Elbow servo', 'box', [40, 20, 38], [0, 175, 0], { rot: [0, 0, 90], color: SERVO, parent: upper.id });
-  const fore = add('Forearm', 'rbox', [22, 124, 20], [0, 235, 0], { param: 4, color: ORANGE, parent: upper.id, joint: joint('revolute', [0, 175, 0], [1, 0, 0], { min: -120, max: 120, drive: drive(2) }) });
-  const wrist = add('Wrist', 'rbox', [22, 40, 22], [0, 310, 0], { param: 3, color: WHITE, parent: fore.id, joint: joint('revolute', [0, 295, 0], [1, 0, 0], { min: -100, max: 100, drive: drive(3) }) });
-  const hand = add('Gripper palm', 'box', [46, 10, 22], [0, 335, 0], { color: DARK, parent: wrist.id });
-  add('Gripper finger L', 'box', [6, 36, 14], [17, 358, 0], { color: GREY, parent: hand.id, joint: joint('prismatic', [17, 358, 0], [-1, 0, 0], { min: 0, max: 12, drive: drive(4) }) });
-  add('Gripper finger R', 'box', [6, 36, 14], [-17, 358, 0], { color: GREY, parent: hand.id, joint: joint('prismatic', [-17, 358, 0], [1, 0, 0], { min: 0, max: 12, drive: drive(4) }) });
+  const upper = add('Upper arm', 'rbox', [26, 136, 22], [0, 110, 0], { param: 4, color: ORANGE, parent: sh.id, detail: 'link', joint: joint('revolute', [0, 45, 0], [1, 0, 0], { min: -90, max: 90, drive: drive(1) }) });
+  add('Elbow servo', 'box', [40, 38, 20], [-24, 175, 0], { rot: [0, 0, -90], color: '#141518', parent: upper.id, detail: 'servo:mg996r' });
+  const fore = add('Forearm', 'rbox', [22, 124, 20], [0, 235, 0], { param: 4, color: ORANGE, parent: upper.id, detail: 'link', joint: joint('revolute', [0, 175, 0], [1, 0, 0], { min: -120, max: 120, drive: drive(2) }) });
+  add('Wrist servo', 'box', [23, 22, 12], [-17, 295, 0], { rot: [0, 0, -90], parent: fore.id, detail: 'servo:mg90s' });
+  const wrist = add('Wrist', 'rbox', [22, 40, 22], [0, 310, 0], { param: 3, color: WHITE, parent: fore.id, detail: 'link', joint: joint('revolute', [0, 295, 0], [1, 0, 0], { min: -100, max: 100, drive: drive(3) }) });
+  const hand = add('Gripper palm', 'box', [46, 10, 22], [0, 335, 0], { color: DARK, parent: wrist.id, detail: 'baseplate' });
+  add('Gripper servo', 'box', [23, 22, 12], [0, 335, -17], { rot: [90, 0, 0], parent: hand.id, detail: 'servo:sg90' });
+  add('Gripper finger L', 'box', [6, 36, 14], [17, 358, 0], { color: GREY, parent: hand.id, detail: 'finger', joint: joint('prismatic', [17, 358, 0], [-1, 0, 0], { min: 0, max: 12, drive: drive(4) }) });
+  add('Gripper finger R', 'box', [6, 36, 14], [-17, 358, 0], { color: GREY, parent: hand.id, detail: 'finger', joint: joint('prismatic', [-17, 358, 0], [1, 0, 0], { min: 0, max: 12, drive: drive(4) }) });
   // blocks to pick up (visual)
   const world: World = { size: 700, obstacles: [{ shape: 'box', pos: [-120, 150], size: [30, 30, 30], color: '#3aa0ff' }, { shape: 'cyl', pos: [120, 150], size: [60, 4, 60], color: '#33c27f' }] };
   return { parts, comps: [pca, bec], spec: { kind: 'arm', mobile: 'fixed', mass: 600, world } as RobotSpec, name: 'Robot arm' };
@@ -65,26 +67,23 @@ function rover(board: BoardDef, mode: 'avoid' | 'line') {
   const pick = pinPicker(board);
   const drv = comp('tb6612', { PWMA: pick(true), AIN1: pick(), AIN2: pick(), PWMB: pick(true), BIN1: pick(), BIN2: pick() }, 0);
   const comps: CompInstance[] = [drv];
-  const chassis = add('Chassis', 'rbox', [130, 5, 180], [0, 36, 0], { param: 10, color: mode === 'avoid' ? ORANGE : '#3aa0ff' });
-  add('Controller', 'rbox', [55, 14, 30], [0, 46, -10], { param: 3, color: '#1f4d34', parent: chassis.id, kind: 'internal', comp: 'board' });
-  add('Motor driver', 'box', [22, 4, 20], [0, 40, 25], { color: '#7a1f2b', parent: chassis.id, kind: 'internal', comp: drv.uid });
-  add('Battery (2×18650)', 'box', [42, 22, 78], [0, 22, -10], { color: '#2b5cb0', parent: chassis.id, kind: 'internal' });
+  const chassis = add('Chassis', 'rbox', [130, 5, 180], [0, 36, 0], { param: 10, color: mode === 'avoid' ? ORANGE : '#3aa0ff', detail: 'baseplate' });
+  add(board.name, 'box', [51, 21, 5], [0, 41, -30], { rot: [-90, 0, 90], parent: chassis.id, kind: 'internal', comp: 'board', detail: `pcb:${board.id}` });
+  add('Motor driver', 'box', [21, 20, 6], [0, 41.5, 25], { rot: [-90, 0, 0], parent: chassis.id, kind: 'internal', comp: drv.uid, detail: 'module:tb6612' });
+  add('Battery (2×18650)', 'box', [42, 22, 78], [0, 22, -10], { parent: chassis.id, kind: 'internal', detail: 'battery' });
   const wheel = (side: 1 | -1, ch: number) => {
-    add(`TT motor ${side > 0 ? 'L' : 'R'}`, 'box', [22, 19, 64], [side * 48, 28, 30], { color: '#e8c33b', parent: chassis.id });
+    add(`TT motor ${side > 0 ? 'L' : 'R'}`, 'box', [22, 19, 64], [side * 48, 28, 30], { color: '#e8c33b', parent: chassis.id, detail: 'motor' });
     const enc = comp('encoder_wheel', { OUT: pick() }, comps.length);
     comps.push(enc);
-    const w = add(`Wheel ${side > 0 ? 'L' : 'R'}`, 'cyl', [66, 66, 26], [side * 78, 33, 30], { rot: [0, 90, 0], color: '#1d1f23', finish: 'soft', parent: chassis.id, joint: joint('wheel', [side * 78, 33, 30], [1, 0, 0], { drive: { comp: drv.uid, channel: ch }, sensors: [enc.uid] }) });
-    add(`Hub ${side > 0 ? 'L' : 'R'}`, 'cyl', [30, 30, 28], [side * 78, 33, 30], { rot: [0, 90, 0], color: '#e8c33b', parent: w.id });
-    add(`Spoke ${side > 0 ? 'L' : 'R'}`, 'box', [29, 50, 6], [side * 78, 33, 30], { color: '#e8c33b', parent: w.id });
+    const w = add(`Wheel ${side > 0 ? 'L' : 'R'}`, 'cyl', [66, 66, 26], [side * 78, 33, 30], { rot: [0, 90, 0], color: '#f1c232', finish: 'soft', parent: chassis.id, detail: 'wheel', joint: joint('wheel', [side * 78, 33, 30], [1, 0, 0], { drive: { comp: drv.uid, channel: ch }, sensors: [enc.uid] }) });
+    void w;
   };
   wheel(1, 0); wheel(-1, 1);
-  add('Caster', 'sphere', [20, 20, 20], [0, 10, -68], { color: GREY, finish: 'brushed', parent: chassis.id });
-  add('Caster mount', 'cyl', [18, 18, 14], [0, 26, -68], { rot: [90, 0, 0], color: DARK, parent: chassis.id });
+  add('Caster', 'sphere', [20, 33, 20], [0, 16.5, -68], { color: GREY, parent: chassis.id, detail: 'caster' });
   let world: World;
   if (mode === 'avoid') {
     const sonar = comp('hcsr04', { TRIG: pick(), ECHO: pick() }, comps.length); comps.push(sonar);
-    const s = add('Ultrasonic sensor', 'box', [45, 20, 4], [0, 52, 88], { color: '#1b3f8a', parent: chassis.id, kind: 'internal', comp: sonar.uid });
-    for (const x of [-13, 13]) add('Sonar transducer', 'cyl', [16, 16, 12], [x, 52, 95], { color: GREY, finish: 'brushed', parent: s.id });
+    add('Ultrasonic sensor', 'box', [45, 20, 14], [0, 52, 88], { parent: chassis.id, kind: 'internal', comp: sonar.uid, detail: 'module:hcsr04' });
     world = { size: 2200, obstacles: [
       { shape: 'box', pos: [0, 600], size: [400, 120, 120] }, { shape: 'cyl', pos: [-550, -200], size: [180, 200, 180], color: '#3aa0ff' },
       { shape: 'box', pos: [600, -300], size: [160, 150, 360], color: '#33c27f' }, { shape: 'box', pos: [-450, 650], size: [200, 100, 200], color: '#e5c07b' },
@@ -93,7 +92,7 @@ function rover(board: BoardDef, mode: 'avoid' | 'line') {
   } else {
     for (const side of [1, -1] as const) {
       const l = comp('line', { OUT: pick() }, comps.length); comps.push(l);
-      add(`Line sensor ${side > 0 ? 'L' : 'R'}`, 'box', [10, 3, 14], [side * 9, 8, 80], { color: '#1b3f8a', parent: chassis.id, kind: 'internal', comp: l.uid });
+      add(`Line sensor ${side > 0 ? 'L' : 'R'}`, 'box', [10, 3, 14], [side * 9, 8, 80], { rot: [90, 0, 0], parent: chassis.id, kind: 'internal', comp: l.uid, detail: 'module:tcrt5000' });
     }
     const pts: [number, number][] = [];
     for (let i = 0; i < 48; i++) { const a = (i / 48) * Math.PI * 2; pts.push([Math.round(Math.cos(a) * 420 - 420), Math.round(Math.sin(a) * 650 + Math.sin(a * 2) * 120)]); }
@@ -111,20 +110,20 @@ function dog(board: BoardDef) {
   const imu = comp('mpu6050', { SDA: sda, SCL: scl }, 1);
   const bec = comp('bec', {}, 2, { amps: 15 });
   const H = 160;
-  const body = add('Body', 'rbox', [104, 44, 220], [0, H, 0], { param: 10, color: WHITE });
-  add('Head', 'rbox', [70, 40, 34], [0, H + 6, 124], { param: 10, color: DARK, parent: body.id });
-  add('Controller', 'rbox', [60, 12, 30], [0, H + 28, -30], { param: 3, color: '#1d2733', parent: body.id, kind: 'internal', comp: 'board' });
-  add('PCA9685', 'box', [62, 4, 25], [0, H + 26, 20], { color: SERVO, parent: body.id, kind: 'internal', comp: pca.uid });
-  add('MPU-6050', 'box', [21, 3, 16], [0, H + 25, 50], { color: '#1b3f8a', parent: body.id, kind: 'internal', comp: imu.uid });
-  add('Battery', 'box', [40, 24, 90], [0, H - 8, -10], { color: '#2b5cb0', parent: body.id, kind: 'internal' });
+  const body = add('Body', 'rbox', [104, 44, 220], [0, H, 0], { param: 10, color: WHITE, detail: 'shell' });
+  add('Head', 'rbox', [70, 40, 34], [0, H + 6, 124], { param: 10, color: DARK, parent: body.id, detail: 'head' });
+  add(board.name, 'box', [55, 28, 5], [0, H + 2, -40], { rot: [-90, 0, 0], parent: body.id, kind: 'internal', comp: 'board', detail: `pcb:${board.id}` });
+  add('PCA9685', 'box', [62, 25, 10], [0, H + 2, 25], { rot: [-90, 0, 0], parent: body.id, kind: 'internal', comp: pca.uid, detail: 'module:pca9685' });
+  add('MPU-6050', 'box', [21, 16, 3], [0, H - 4, 60], { rot: [-90, 0, 0], parent: body.id, kind: 'internal', comp: imu.uid, detail: 'module:mpu6050' });
+  add('Battery', 'box', [40, 24, 90], [0, H - 12, -10], { parent: body.id, kind: 'internal', detail: 'battery' });
   // legs FL, FR, BL, BR → channels 0-2, 3-5, 6-8, 9-11
   [[1, 1], [-1, 1], [1, -1], [-1, -1]].forEach(([side, front], i) => {
     const x0 = side * 52, z = front * 80, x1 = side * 64, ch = i * 3, nm = `${front > 0 ? 'F' : 'B'}${side > 0 ? 'L' : 'R'}`;
     const d = (k: number, invert = false) => ({ comp: pca.uid, channel: ch + k, invert });
-    const hip = add(`${nm} shoulder`, 'box', [26, 30, 40], [x0, H, z], { color: DARK, parent: body.id, joint: joint('revolute', [x0, H, z], [0, 0, 1], { min: -40, max: 40, drive: d(0, side < 0) }) });
-    const up = add(`${nm} upper leg`, 'rbox', [14, 86, 22], [x1, H - 40, z], { param: 4, color: ORANGE, parent: hip.id, joint: joint('revolute', [x1, H, z], [1, 0, 0], { min: -80, max: 80, drive: d(1, true) }) });
-    const low = add(`${nm} lower leg`, 'rbox', [12, 78, 16], [x1, H - 120 + 4, z], { param: 4, color: DARK, parent: up.id, joint: joint('revolute', [x1, H - 80, z], [1, 0, 0], { min: -10, max: 150, drive: d(2) }) });
-    add(`${nm} foot`, 'sphere', [18, 14, 18], [x1, 7, z], { color: '#1d1f23', finish: 'soft', parent: low.id, foot: true });
+    const hip = add(`${nm} shoulder`, 'box', [40, 38, 20], [x0, H, z], { rot: [90, 0, 90], color: '#141518', parent: body.id, detail: 'servo:ds3218', joint: joint('revolute', [x0, H, z], [0, 0, 1], { min: -40, max: 40, drive: d(0, side < 0) }) });
+    const up = add(`${nm} upper leg`, 'rbox', [14, 86, 22], [x1, H - 40, z], { param: 4, color: ORANGE, parent: hip.id, detail: 'link', joint: joint('revolute', [x1, H, z], [1, 0, 0], { min: -80, max: 80, drive: d(1, true) }) });
+    const low = add(`${nm} lower leg`, 'rbox', [12, 78, 16], [x1, H - 120 + 4, z], { param: 4, color: DARK, parent: up.id, detail: 'link', joint: joint('revolute', [x1, H - 80, z], [1, 0, 0], { min: -10, max: 150, drive: d(2) }) });
+    add(`${nm} foot`, 'sphere', [18, 14, 18], [x1, 7, z], { color: '#1d1f23', finish: 'soft', parent: low.id, foot: true, detail: 'foot' });
   });
   return { parts, comps: [pca, imu, bec], spec: { kind: 'legs', mobile: 'legs', mass: 1300, world: { size: 3000, obstacles: [] } } as RobotSpec, name: 'Robot dog' };
 }
@@ -136,21 +135,23 @@ function hexapod(board: BoardDef) {
   const R = comp('pca9685', { SDA: sda, SCL: scl }, 1, { address: 0x41, servos: Array.from({ length: 9 }, (_, ch) => ({ ch, type: 'mg996r' })) });
   const bec = comp('bec', {}, 2, { amps: 20 });
   const H = 100, C = 30, F = 60, T = 100;
-  const body = add('Body', 'rbox', [120, 36, 220], [0, H, 0], { param: 14, color: '#33c27f' });
-  add('Controller', 'rbox', [60, 12, 30], [0, H + 24, 0], { param: 3, color: '#1d2733', parent: body.id, kind: 'internal', comp: 'board' });
-  add('PCA9685 L', 'box', [62, 4, 25], [0, H + 22, 50], { color: SERVO, parent: body.id, kind: 'internal', comp: L.uid });
-  add('PCA9685 R', 'box', [62, 4, 25], [0, H + 22, -50], { color: SERVO, parent: body.id, kind: 'internal', comp: R.uid });
-  add('Battery', 'box', [44, 22, 90], [0, H - 6, 0], { color: '#2b5cb0', parent: body.id, kind: 'internal' });
+  const body = add('Body', 'rbox', [120, 36, 220], [0, H, 0], { param: 14, color: '#33c27f', detail: 'shell' });
+  add('Head', 'rbox', [60, 26, 26], [0, H + 4, 118], { color: DARK, parent: body.id, detail: 'head' });
+  add(board.name, 'box', [55, 28, 5], [0, H + 2, 0], { rot: [-90, 0, 0], parent: body.id, kind: 'internal', comp: 'board', detail: `pcb:${board.id}` });
+  add('PCA9685 L', 'box', [62, 25, 10], [0, H + 2, 55], { rot: [-90, 0, 0], parent: body.id, kind: 'internal', comp: L.uid, detail: 'module:pca9685' });
+  add('PCA9685 R', 'box', [62, 25, 10], [0, H + 2, -55], { rot: [-90, 0, 0], parent: body.id, kind: 'internal', comp: R.uid, detail: 'module:pca9685' });
+  add('Battery', 'box', [44, 22, 90], [0, H - 8, 0], { parent: body.id, kind: 'internal', detail: 'battery' });
   // L1 L2 L3 (front → back) on PCA L, R1 R2 R3 on PCA R
   [[1, 1], [1, 0], [1, -1], [-1, 1], [-1, 0], [-1, -1]].forEach(([side, row], i) => {
     const drv = side > 0 ? L : R, ch = (i % 3) * 3, z = row * 85, x0 = side * 60, nm = `${side > 0 ? 'L' : 'R'}${(i % 3) + 1}`;
     const d = (k: number, invert: boolean) => ({ comp: drv.uid, channel: ch + k, invert });
-    const coxa = add(`${nm} coxa`, 'box', [C, 20, 24], [x0 + side * C / 2, H, z], { color: DARK, parent: body.id, joint: joint('revolute', [x0, H, z], [0, 1, 0], { min: -45, max: 45, drive: d(0, side > 0) }) });
+    const coxa = add(`${nm} coxa`, 'box', [C + 10, 34, 18], [x0 + side * C / 2, H - 4, z], { color: '#141518', parent: body.id, detail: 'servo:mg996r', joint: joint('revolute', [x0, H, z], [0, 1, 0], { min: -45, max: 45, drive: d(0, side > 0) }) });
     const xf = x0 + side * C;
-    const femur = add(`${nm} femur`, 'rbox', [F, 14, 18], [xf + side * F / 2, H, z], { param: 4, color: '#33c27f', parent: coxa.id, joint: joint('revolute', [xf, H, z], [0, 0, 1], { min: -60, max: 80, drive: d(1, side < 0) }) });
+    const femur = add(`${nm} femur`, 'rbox', [14, F, 18], [xf + side * F / 2, H, z], { rot: [0, 0, 90], param: 4, color: '#33c27f', parent: coxa.id, detail: 'link', joint: joint('revolute', [xf, H, z], [0, 0, 1], { min: -60, max: 80, drive: d(1, side < 0) }) });
     const xt = xf + side * F;
-    const tibia = add(`${nm} tibia`, 'rbox', [12, T - 10, 14], [xt, H - (T - 10) / 2, z], { param: 4, color: DARK, parent: femur.id, joint: joint('revolute', [xt, H, z], [0, 0, 1], { min: -70, max: 70, drive: d(2, side < 0) }) });
-    add(`${nm} foot`, 'sphere', [14, 12, 14], [xt, 6, z], { color: '#1d1f23', finish: 'soft', parent: tibia.id, foot: true });
+    add(`${nm} knee servo`, 'box', [30, 28, 14], [xt, H + 2, z], { rot: [90, 0, 0], color: '#141518', parent: femur.id, detail: 'servo:mg996r' });
+    const tibia = add(`${nm} tibia`, 'rbox', [12, T - 10, 14], [xt, H - (T - 10) / 2, z], { param: 4, color: DARK, parent: femur.id, detail: 'link', joint: joint('revolute', [xt, H, z], [0, 0, 1], { min: -70, max: 70, drive: d(2, side < 0) }) });
+    add(`${nm} foot`, 'sphere', [14, 12, 14], [xt, 6, z], { color: '#1d1f23', finish: 'soft', parent: tibia.id, foot: true, detail: 'foot' });
   });
   return { parts, comps: [L, R, bec], spec: { kind: 'legs', mobile: 'legs', mass: 1600, world: { size: 3000, obstacles: [] } } as RobotSpec, name: 'Hexapod' };
 }

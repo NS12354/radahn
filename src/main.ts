@@ -276,7 +276,7 @@ class FormframeApp implements App {
     this.viewport.scene.add(this.product.group);
     const empty = this.product instanceof EmptyProduct;
     document.body.classList.toggle('no-model', empty);
-    this.viewport.scene.getObjectByName('__ground')!.visible = !empty;
+    this.viewport.showFloor(!empty);
     this.bench.product = this.product;
     this.bench.load(this.board(), this.project.electronics.comps);
     this.selected = null;
@@ -380,7 +380,7 @@ class FormframeApp implements App {
       this.product = new ImportedProduct(root, this.project.product.imported.bindings);
       this.viewport.scene.add(this.product.group);
       document.body.classList.remove('no-model');
-      this.viewport.scene.getObjectByName('__ground')!.visible = true;
+      this.viewport.showFloor(true);
       this.bench.product = this.product;
       this.bench.load(this.board(), this.project.electronics.comps);
       this.viewport.frame(this.product.group);

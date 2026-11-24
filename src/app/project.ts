@@ -67,6 +67,8 @@ export interface BuiltPart {
   parent?: string;
   /** Robots: how this part moves relative to its parent. Pivot and axis are in model space, at rest. */
   joint?: Joint;
+  /** A detailed model of real hardware instead of the plain shape, e.g. "servo:mg996r", "pcb:picow" (see scene/detail.ts). */
+  detail?: string;
   /** Robots: a foot (legged robots stand and walk on these). Its contact point is the bottom of the part. */
   foot?: boolean;
 }

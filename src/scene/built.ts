@@ -6,6 +6,7 @@ import type { BuiltModel, BuiltPart, World } from '../app/project';
 import { instances } from '../app/fit';
 import { partMeshGeometry } from './mesh';
 import { screenPart, type ScreenPick } from '../app/screenpart';
+import { buildDetail } from './detail';
 
 /**
  * A product made of primitives (by hand in the modeler, or by auto build).
@@ -38,7 +39,7 @@ export function shapeGeometry(p: BuiltPart, segment?: { i: number; n: number }):
   let g: THREE.BufferGeometry;
   if (p.shape === 'mesh') return partMeshGeometry(p);
   switch (p.shape) {
-    case 'box': g = new THREE.BoxGeometry(w, h, d); break;
+    case 'box': { const r = Math.min(0.6, Math.min(w, h, d) * 0.12); g = r > 0.08 ? new RoundedBoxGeometry(w, h, d, 2, r) : new THREE.BoxGeometry(w, h, d); break; }
     case 'rbox': {
       const r = Math.max(0.01, Math.min(p.param ?? 2, Math.min(w, h, d) / 2 - 0.01));
       g = new RoundedBoxGeometry(w, h, d, 4, r); break;
@@ -198,6 +199,16 @@ export class BuiltProduct extends Product {
     const segs = p.role === 'led' && p.segments && p.segments > 1 && (p.shape === 'tube' || p.shape === 'torus') ? p.segments : 0;
     // screen parts built from a mesh get planar UVs in partMeshGeometry
     const geos: { g: THREE.BufferGeometry; m: THREE.Material }[] = [];
+    const det = p.detail ?? (p.comp === 'board' ? 'pcb:generic' : null);
+    const detail = det && this.screenOn?.id !== p.id && p.role !== 'led' ? buildDetail(det, p.size, p.color) : null;
+    if (detail) {
+      for (const inst of instances(p)) {
+        const im = new THREE.Matrix4().compose(new THREE.Vector3(...inst.pos), new THREE.Quaternion().setFromEuler(new THREE.Euler(...inst.rot.map(v => v * D2R) as [number, number, number])), new THREE.Vector3(1, 1, 1));
+        const local = inv.clone().multiply(im);
+        for (const c of detail.children as THREE.Mesh[]) { const m = (c.material as THREE.Material).clone(); this.ownMats.push(m); const mesh = new THREE.Mesh(c.geometry, m); local.decompose(mesh.position, mesh.quaternion, mesh.scale); mesh.userData.part = p.id; root.add(mesh); }
+      }
+      return root;
+    }
     if (segs) for (let i = 0; i < segs; i++) {
       const m = new THREE.MeshStandardMaterial({ color: new THREE.Color(p.color), emissive: 0, roughness: 0.5 });
       this.ledMats.push(m); this.ownMats.push(m); geos.push({ g: shapeGeometry(p, { i, n: segs }), m });
@@ -281,7 +292,7 @@ export class BuiltProduct extends Product {
     this.sel = part;
     for (const [id, r] of this.roots) r.traverse((o: any) => {
       const m = o.material;
-      if (!o.isMesh || m === this.screenMat || this.ledMats.includes(m)) return;
+      if (!o.isMesh || m === this.screenMat || this.ledMats.includes(m) || m.name === 'glow') return;
       m.emissive?.setHex(id === part ? 0x1c3cff : 0); m.emissiveIntensity = id === part ? 0.3 : 1;
     });
   }
