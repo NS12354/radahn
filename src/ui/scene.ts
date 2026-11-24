@@ -124,6 +124,7 @@ function addView(def: SceneRobot, p: Project) {
   const r = twin!.add(def, p); if (!r) { missing.push(def); return; }
   const product = new BuiltProduct(r.model, displayComps(p));
   r.bench.product = product; r.bench.load(r.board, p.electronics.comps);
+  product.setPose(r.sim.pose); // stand at its spot now, so framing sees where it really is
   vp!.scene.add(product.group);
   const color = TAG_COLORS[(views.length + missing.length) % TAG_COLORS.length];
   const tag = el('button', 'swtagl'); tag.style.setProperty('--c', color);
