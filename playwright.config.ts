@@ -7,7 +7,8 @@ import path from 'node:path';
  * End-to-end tests drive the real app in Chromium: studio, 3D modeler,
  * device IDE windows, the emulators and the dev-server APIs.
  * Locally, point FF_CHROMIUM at any Chromium build to skip the download;
- * otherwise run `npx playwright install chromium` once.
+ * otherwise run `npx playwright install chromium` once. FF_GPU=1 uses the real GPU
+ * (macOS Metal) instead of the SwiftShader software renderer.
  */
 const PORT = 5174;
 export default defineConfig({
@@ -22,7 +23,7 @@ export default defineConfig({
     baseURL: `http://localhost:${PORT}/`,
     viewport: { width: 1400, height: 880 },
     trace: 'retain-on-failure',
-    launchOptions: { executablePath: process.env.FF_CHROMIUM || undefined, args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader'] },
+    launchOptions: { executablePath: process.env.FF_CHROMIUM || undefined, args: process.env.FF_GPU ? ['--use-angle=metal', '--enable-gpu', '--ignore-gpu-blocklist'] : ['--use-gl=swiftshader', '--enable-unsafe-swiftshader'] },
   },
   webServer: {
     command: `npx vite --port ${PORT} --strictPort`,

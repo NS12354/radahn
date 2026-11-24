@@ -26,7 +26,6 @@ export class Viewport {
   camera = new THREE.PerspectiveCamera(32, 1, 0.1, 400);
   controls: OrbitControls;
   quality: Quality = 'high';
-  private shadowFrame = 0;
   /** Set by the electronics panel while an emulator runs. */
   throttle = false;
   /** Pause normal rendering (photo mode draws into the canvas itself). */
@@ -76,8 +75,8 @@ export class Viewport {
     let lastRender = 0;
     const loop = (now: number) => {
       requestAnimationFrame(loop);
-      // While firmware is emulating, render at ≤30 fps to leave CPU for the emulator.
-      if (this.throttle && now - lastRender < 32) return;
+      // While firmware is emulating, render at ≤30 fps (≤15 in Fast) to leave CPU for the emulator.
+      if (this.throttle && now - lastRender < (this.quality === 'high' ? 32 : 66)) return;
       lastRender = now;
       const dt = Math.min(0.05, (now - this.last) / 1000); this.last = now;
       this.controls.update();
@@ -90,10 +89,11 @@ export class Viewport {
   }
 
   render() {
-    // Fast: shadows are refreshed a few times a second, not every frame (the shadow pass is the big cost on weak GPUs)
-    const sm = this.renderer.shadowMap, now = performance.now();
-    if (this.quality === 'high') sm.autoUpdate = true;
-    else { sm.autoUpdate = false; if (now - this.shadowFrame > 250) { this.shadowFrame = now; sm.needsUpdate = true; } }
+    // Fast is the low-power mode: no shadow pass, no post-processing, 1x pixels
+    const high = this.quality === 'high';
+    if (this.key.castShadow !== high) this.key.castShadow = high;
+    const pr = high ? Math.min(devicePixelRatio, 2) : 1;
+    if (this.renderer.getPixelRatio() !== pr) { this.renderer.setPixelRatio(pr); this.resize(); }
     if (this.quality === 'high' && !this.throttle) this.composer.render();
     else { this.renderer.toneMapping = THREE.ACESFilmicToneMapping; this.renderer.render(this.scene, this.camera); }
   }
