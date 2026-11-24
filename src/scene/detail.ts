@@ -72,16 +72,16 @@ export const M = {
   tread: () => mat('tread', () => { const t = treadTex(); if (t) t.repeat.set(6, 1); return new THREE.MeshPhysicalMaterial({ color: '#17181a', roughness: 0.9, bumpMap: t, bumpScale: 2.5 }); }),
   chrome: () => mat('chrome', () => new THREE.MeshPhysicalMaterial({ color: '#e8eaee', metalness: 1, roughness: 0.12 })),
   alu: (c = '#c9ccd2') => mat(`al${c}`, () => { const t = brushedTex(); return new THREE.MeshPhysicalMaterial({ color: c, metalness: 1, roughness: 0.38, roughnessMap: t, anisotropy: 0.7 } as any); }),
-  anodised: (c: string) => mat(`an${c}`, () => new THREE.MeshPhysicalMaterial({ color: c, metalness: 0.85, roughness: 0.32, roughnessMap: brushedTex(), clearcoat: 0.3 })),
+  anodised: (c: string) => mat(`an${c}`, () => new THREE.MeshPhysicalMaterial({ color: c, metalness: 0.85, roughness: 0.32, roughnessMap: brushedTex(), clearcoat: 0.3, clearcoatRoughness: 0.25 })),
   gold: () => mat('gold', () => new THREE.MeshPhysicalMaterial({ color: '#e2b34b', metalness: 1, roughness: 0.25 })),
   steel: () => mat('steel', () => new THREE.MeshPhysicalMaterial({ color: '#b5b9bf', metalness: 1, roughness: 0.3 })),
   ic: () => mat('ic', () => new THREE.MeshPhysicalMaterial({ color: '#141416', roughness: 0.55, roughnessMap: noiseTex() })),
   pcb: (c: string, seed = 1) => mat(`pcb${c}${seed}`, () => new THREE.MeshPhysicalMaterial({ color: '#ffffff', map: pcbTex(c, seed), roughness: 0.45, clearcoat: 0.5, clearcoatRoughness: 0.25 })),
   pcbEdge: (c: string) => mat(`pce${c}`, () => new THREE.MeshPhysicalMaterial({ color: new THREE.Color(c).multiplyScalar(0.7), roughness: 0.6 })),
-  label: (t: string, bg: string) => mat(`lb${t}${bg}`, () => new THREE.MeshPhysicalMaterial({ map: labelTex(t, bg), roughness: 0.5, clearcoat: 0.4 })),
+  label: (t: string, bg: string) => mat(`lb${t}${bg}`, () => new THREE.MeshPhysicalMaterial({ map: labelTex(t, bg), roughness: 0.5, clearcoat: 0.4, clearcoatRoughness: 0.3 })),
   led: (c: string) => mat(`led${c}`, () => Object.assign(new THREE.MeshPhysicalMaterial({ color: c, emissive: c, emissiveIntensity: 3, roughness: 0.2, transmission: 0.3 }), { name: 'glow' })),
   mesh: () => mat('mesh', () => new THREE.MeshPhysicalMaterial({ color: '#9fa4ab', metalness: 0.9, roughness: 0.55, map: canvasTex('meshgrid', 64, 64, (g) => { g.fillStyle = '#888'; g.fillRect(0, 0, 64, 64); g.fillStyle = '#222'; for (let y = 0; y < 64; y += 4) for (let x = (y / 4) % 2 * 2; x < 64; x += 4) g.fillRect(x, y, 2, 2); }) })),
-  wire: (c: string) => mat(`w${c}`, () => new THREE.MeshPhysicalMaterial({ color: c, roughness: 0.5, clearcoat: 0.6 })),
+  wire: (c: string) => mat(`w${c}`, () => new THREE.MeshPhysicalMaterial({ color: c, roughness: 0.5, clearcoat: 0.6, clearcoatRoughness: 0.3 })),
 };
 
 // ------------------------------------------------------------------ geometry helpers

@@ -98,6 +98,33 @@ How it works (`src/app/kinematics.ts`, `src/app/robot.ts`):
   - It publishes `/joint_states` (with the URDF's joint names) and `/formframe/pose`.
   - It listens to `/cmd_vel` (wheeled robots, while no firmware is running) and `/formframe/joint_commands`.
 
+### Looks, physics and the beginner view
+
+**Rendering** (`src/scene/viewport.ts`, `detail.ts`, `photo.ts`):
+- Physically based materials, lit by a studio environment of softboxes.
+- A key light with soft shadows fitted to whatever is in view, plus a shadow-catching floor.
+- Ground-truth ambient occlusion (GTAO) and gentle bloom for LEDs, with ACES tone mapping.
+- **⚡ Fast** turns off the post-processing (it's used automatically while an emulator runs).
+- **📷 Photo** path-traces the view (three-gpu-pathtracer) into a near-photographic image you can save. It needs a real GPU.
+
+**Detailed models.** Parts can use a detailed model instead of a plain shape (`detail: "servo:mg996r"`, `"pcb:picow"`, `"module:hcsr04"`, …). The models are built procedurally, with no asset files:
+- Servos have mounting ears, splined output, horns, labels and leads.
+- Wheels have treaded tyres; there are also yellow TT gear motors.
+- Circuit boards are styled per board family, with traces, silkscreen, chips, gold header pins and USB.
+- Also: HC-SR04, PCA9685 and motor-driver modules, drilled anodised links, battery packs, casters, shells and a camera head.
+
+**Physics** (`src/app/physics.ts`, Rapier): with *Physics: Realistic* in the Robot panel:
+- Each link is a rigid body, and servos weigh what they really weigh.
+- Joints are motors capped at the servo's stall torque, so weak servos sag.
+- Wheels get traction from friction. The floor, walls and obstacles collide, and pickable blocks are real objects.
+- Walking, turning and falling over come from the physics.
+- *Simple* uses the kinematic contact model, which is faster.
+
+**Beginner view.**
+- **Simple** (the default) hides expert settings: Plan and GitHub, Blender, part import from links, URDF/ROS, mass, and advanced inspector rows. **Advanced** shows everything.
+- **▶ Run** in the top bar works from any tab. The code keeps running in Design and Review, so you can watch the robot.
+- The **coach** card says what to do next, in plain words. **Show me** points at the right control, and steps tick off as you do them. *Project → Show the coach* brings it back.
+
 ### Scenes: several robots in one world
 
 **Scenes** on the home screen put robots from your projects into one shared world, like a digital twin of a cell, a floor or a fleet. `src/app/scene.ts` is the document and `src/app/twin.ts` is the simulator.

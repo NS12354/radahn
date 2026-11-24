@@ -94,7 +94,7 @@ const tmpM = new THREE.Matrix4(), tmpS = new THREE.Vector3(), ONE = new THREE.Ve
  * Pickable blocks' meshes go into `picks` by obstacle index, so they can be moved.
  */
 export function drawWorld(w: World, g: THREE.Group, picks: Map<number, THREE.Mesh>) {
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(w.size, w.size), new THREE.MeshPhysicalMaterial({ color: 0x9d9a94, roughness: 0.85, clearcoat: 0.05 }));
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(w.size, w.size), new THREE.MeshPhysicalMaterial({ color: 0x9d9a94, roughness: 0.85 }));
   floor.rotation.x = -Math.PI / 2; floor.position.y = -0.2; floor.receiveShadow = true;
   g.add(floor);
   const grid = new THREE.GridHelper(w.size, Math.round(w.size / 100), 0xb5b1a8, 0xc7c3ba); grid.position.y = -0.1; g.add(grid);

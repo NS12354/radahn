@@ -125,10 +125,10 @@ function dog(board: BoardDef) {
   const H = 160;
   const body = add('Body', 'rbox', [104, 44, 220], [0, H, 0], { param: 10, color: WHITE, detail: 'shell' });
   add('Head', 'rbox', [70, 40, 34], [0, H + 6, 124], { param: 10, color: DARK, parent: body.id, detail: 'head' });
-  add(board.name, 'box', [55, 28, 5], [0, H + 2, -40], { rot: [-90, 0, 0], parent: body.id, kind: 'internal', comp: 'board', detail: `pcb:${board.id}` });
-  add('PCA9685', 'box', [62, 25, 10], [0, H + 2, 25], { rot: [-90, 0, 0], parent: body.id, kind: 'internal', comp: pca.uid, detail: 'module:pca9685' });
+  add(board.name, 'box', [55, 28, 5], [0, H + 8, -40], { rot: [-90, 0, 0], parent: body.id, kind: 'internal', comp: 'board', detail: `pcb:${board.id}` });
+  add('PCA9685', 'box', [62, 25, 10], [0, H + 8, 25], { rot: [-90, 0, 0], parent: body.id, kind: 'internal', comp: pca.uid, detail: 'module:pca9685' });
   add('MPU-6050', 'box', [21, 16, 3], [0, H - 4, 60], { rot: [-90, 0, 0], parent: body.id, kind: 'internal', comp: imu.uid, detail: 'module:mpu6050' });
-  add('Battery', 'box', [40, 24, 90], [0, H - 12, -10], { parent: body.id, kind: 'internal', detail: 'battery' });
+  add('Battery', 'box', [40, 22, 90], [0, H - 9, -10], { parent: body.id, kind: 'internal', detail: 'battery' });
   // legs FL, FR, BL, BR → channels 0-2, 3-5, 6-8, 9-11
   [[1, 1], [-1, 1], [1, -1], [-1, -1]].forEach(([side, front], i) => {
     const x0 = side * 52, z = front * 80, x1 = side * 64, ch = i * 3, nm = `${front > 0 ? 'F' : 'B'}${side > 0 ? 'L' : 'R'}`;
@@ -150,10 +150,10 @@ function hexapod(board: BoardDef) {
   const H = 100, C = 30, F = 60, T = 100;
   const body = add('Body', 'rbox', [120, 36, 220], [0, H, 0], { param: 14, color: '#33c27f', detail: 'shell' });
   add('Head', 'rbox', [60, 26, 26], [0, H + 4, 118], { color: DARK, parent: body.id, detail: 'head' });
-  add(board.name, 'box', [55, 28, 5], [0, H + 2, 0], { rot: [-90, 0, 0], parent: body.id, kind: 'internal', comp: 'board', detail: `pcb:${board.id}` });
-  add('PCA9685 L', 'box', [62, 25, 10], [0, H + 2, 55], { rot: [-90, 0, 0], parent: body.id, kind: 'internal', comp: L.uid, detail: 'module:pca9685' });
-  add('PCA9685 R', 'box', [62, 25, 10], [0, H + 2, -55], { rot: [-90, 0, 0], parent: body.id, kind: 'internal', comp: R.uid, detail: 'module:pca9685' });
-  add('Battery', 'box', [44, 22, 90], [0, H - 8, 0], { parent: body.id, kind: 'internal', detail: 'battery' });
+  add(board.name, 'box', [55, 28, 5], [0, H + 8, 0], { rot: [-90, 0, 0], parent: body.id, kind: 'internal', comp: 'board', detail: `pcb:${board.id}` });
+  add('PCA9685 L', 'box', [62, 25, 10], [0, H + 8, 55], { rot: [-90, 0, 0], parent: body.id, kind: 'internal', comp: L.uid, detail: 'module:pca9685' });
+  add('PCA9685 R', 'box', [62, 25, 10], [0, H + 8, -55], { rot: [-90, 0, 0], parent: body.id, kind: 'internal', comp: R.uid, detail: 'module:pca9685' });
+  add('Battery', 'box', [44, 20, 90], [0, H - 8, 0], { parent: body.id, kind: 'internal', detail: 'battery' });
   // L1 L2 L3 (front → back) on PCA L, R1 R2 R3 on PCA R
   [[1, 1], [1, 0], [1, -1], [-1, 1], [-1, 0], [-1, -1]].forEach(([side, row], i) => {
     const drv = side > 0 ? L : R, ch = (i % 3) * 3, z = row * 85, x0 = side * 60, nm = `${side > 0 ? 'L' : 'R'}${(i % 3) + 1}`;
