@@ -847,7 +847,7 @@ body.no-sm:not(.m-elec) #bottom{display:none}
 /* hosted (Vercel) build: these need the local dev server */
 body.hosted #bBlender,body.hosted #menu [data-a=blender],body.hosted #tabClaude{display:none}
 /* access-code dialog for AI features */
-dialog.ffcode{border:0;border-radius:28px;padding:24px;width:min(360px,calc(100vw - 32px));background:var(--panel);color:var(--text);box-shadow:var(--sh-3,0 8px 24px rgba(0,0,0,.18))}
+dialog.ffcode{margin:auto;border:0;border-radius:28px;padding:24px;width:min(360px,calc(100vw - 32px));background:var(--panel);color:var(--text);box-shadow:var(--sh-3,0 8px 24px rgba(0,0,0,.18))}
 dialog.ffcode::backdrop{background:rgba(32,33,36,.32)}
 dialog.ffcode h3{font-size:20px;font-weight:400;margin:0 0 8px}
 dialog.ffcode p{font-size:14px;color:var(--text2);margin:0 0 16px;line-height:1.45}
