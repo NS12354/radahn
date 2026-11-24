@@ -71,6 +71,8 @@ export class CodeEditor {
   private insert(t: string) { this.ta.setRangeText(t, this.ta.selectionStart, this.ta.selectionEnd, 'end'); this.ta.dispatchEvent(new Event('input')); }
   private key(e: KeyboardEvent) {
     if (this.onKey(e)) { e.preventDefault(); return; }
+    // Cmd/Ctrl+Y redoes (as well as Shift+Cmd/Ctrl+Z, which the browser already handles)
+    if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === 'y') { e.preventDefault(); document.execCommand('redo'); return; }
     const ta = this.ta, v = ta.value, s = ta.selectionStart;
     if (e.key === 'Tab') {
       e.preventDefault();

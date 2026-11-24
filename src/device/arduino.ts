@@ -182,7 +182,7 @@ export function mountArduino(root: HTMLElement, ws: Workspace) {
 
   menubar($('.amenu'), {
     File: () => [{ label: 'New Tab', key: 'Ctrl+Shift+N', act: newTab }, { label: 'Save', key: 'Ctrl+S', act: () => { ws.saveAll(); toast('Saved.'); } }, { sep: true }, { label: 'Close Tab', act: () => ws.active && ws.close(ws.active) }],
-    Edit: () => [{ label: 'Undo', key: 'Ctrl+Z', act: () => document.execCommand('undo') }, { label: 'Redo', key: 'Ctrl+Shift+Z', act: () => document.execCommand('redo') }, { sep: true }, { label: 'Find in Files…', key: 'Ctrl+Shift+F', act: () => panel('search') }],
+    Edit: () => [{ label: 'Undo', key: 'Ctrl+Z', act: () => document.execCommand('undo') }, { label: 'Redo', key: 'Ctrl+Y', act: () => document.execCommand('redo') }, { sep: true }, { label: 'Find in Files…', key: 'Ctrl+Shift+F', act: () => panel('search') }],
     Sketch: () => [{ label: 'Verify/Compile', key: 'Ctrl+R', act: verify }, { label: 'Upload', key: 'Ctrl+U', act: upload }, { sep: true }, { label: 'Include Library ▸ Manage Libraries…', act: () => panel('libs') }],
     Tools: () => [{ label: 'Serial Monitor', key: 'Ctrl+Shift+M', act: () => tab('monitor') }, { label: 'Serial Plotter', act: () => tab('plotter') }, { sep: true }, { label: `Board: "${b.name}"`, act: () => panel('boards') }, { label: `Port: "${port}"`, dis: true }],
     Help: () => [{ label: 'About', act: () => info('About', '<p>An Arduino IDE 2-style editor in Formframe. Sketches compile with avr-gcc or arduino-cli on the dev server and run on the emulated ATmega328P in the studio window.</p>', 'ard-m') }],

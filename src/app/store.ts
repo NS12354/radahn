@@ -16,16 +16,21 @@ export interface ProjectMeta {
   thumb?: string;
 }
 
-const DB = 'formframe', META = 'meta', DATA = 'data';
+const DB = 'formframe', META = 'meta', DATA = 'data', CHATS = 'chats';
 let dbp: Promise<IDBDatabase | null> | null = null;
-const mem = { meta: new Map<string, ProjectMeta>(), data: new Map<string, string>() };
+const mem = { meta: new Map<string, ProjectMeta>(), data: new Map<string, string>(), chats: new Map<string, string>() };
 export let persistent = true;
 
 function db() {
   if (!dbp) dbp = new Promise(res => {
     try {
-      const r = indexedDB.open(DB, 1);
-      r.onupgradeneeded = () => { r.result.createObjectStore(META, { keyPath: 'id' }); r.result.createObjectStore(DATA); };
+      const r = indexedDB.open(DB, 2);
+      r.onupgradeneeded = () => {
+        const d = r.result, has = (n: string) => d.objectStoreNames.contains(n);
+        if (!has(META)) d.createObjectStore(META, { keyPath: 'id' });
+        if (!has(DATA)) d.createObjectStore(DATA);
+        if (!has(CHATS)) d.createObjectStore(CHATS); // Claude chat per project (v2)
+      };
       r.onsuccess = () => res(r.result);
       r.onerror = () => { persistent = false; res(null); };
     } catch { persistent = false; res(null); }
@@ -73,9 +78,9 @@ export async function saveProject(id: string, p: Project, thumb?: string | null,
 
 export async function deleteProject(id: string) {
   const d = await db();
-  if (!d) { mem.meta.delete(id); mem.data.delete(id); return; }
-  const t = d.transaction([META, DATA], 'readwrite');
-  t.objectStore(META).delete(id); t.objectStore(DATA).delete(id);
+  if (!d) { mem.meta.delete(id); mem.data.delete(id); mem.chats.delete(id); return; }
+  const t = d.transaction([META, DATA, CHATS], 'readwrite');
+  t.objectStore(META).delete(id); t.objectStore(DATA).delete(id); t.objectStore(CHATS).delete(id);
   await done(t);
 }
 
@@ -112,4 +117,18 @@ export async function journalRecover() {
     journalClear(id);
   }
   return n;
+}
+
+/** The Claude chat for a project (kept in this browser, separate from the project file). */
+export async function loadChat<T>(id: string): Promise<T | null> {
+  const d = await db();
+  const s = d ? await req<string | undefined>(d.transaction(CHATS).objectStore(CHATS).get(id)).catch(() => undefined) : mem.chats.get(id);
+  try { return s ? JSON.parse(s) as T : null; } catch { return null; }
+}
+export async function saveChat(id: string, chat: unknown | null) {
+  const d = await db(), body = chat ? JSON.stringify(chat) : null;
+  if (!d) { if (body) mem.chats.set(id, body); else mem.chats.delete(id); return; }
+  const t = d.transaction(CHATS, 'readwrite');
+  if (body) t.objectStore(CHATS).put(body, id); else t.objectStore(CHATS).delete(id);
+  await done(t);
 }

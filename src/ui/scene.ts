@@ -2,8 +2,8 @@
  * The scene workspace: several robots in one shared world, simulated together.
  *
  * - Left: the robots in the scene (name, design, status, position) and what's in the world.
- * - Middle: the 3D view. Every robot carries a name tag. Drag a robot to move it,
- *   Shift-drag to turn it (while stopped).
+ * - Middle: the 3D view. Every robot carries a name tag. Drag a robot or any object
+ *   to move it, Shift-drag to turn it (while stopped). Cmd/Ctrl+Z undoes, Cmd/Ctrl+Y redoes.
  * - Bottom: one serial console for the whole scene, filterable per robot.
  *
  * Each robot runs its own firmware on its own emulated board or behavioral sim
@@ -56,12 +56,16 @@ const pickMeshes = new Map<number, THREE.Mesh>();
 let worldKey = '';
 let saveT: any = 0;
 let uiT = 0;
+let draggingObj: number | null = null; // obstacle being dragged: the sim doesn't move its mesh meanwhile
+/** Undo / redo for the scene: JSON snapshots taken once changes settle. */
+const hist = { undo: [] as string[], redo: [] as string[], cur: '', t: 0 as any };
 const log: { robot: string; text: string; cls?: string }[] = [];
 const partial = new Map<string, string>();
 let firmwareCache: Promise<Uint8Array> | null = null;
 
 export const inScene = () => document.body.classList.contains('at-scene');
 (globalThis as any).__scene = () => twin; // handy for debugging from the console (and the browser tests)
+(globalThis as any).__sceneView = () => ({ vp, worldG, scene });
 
 export function initScene(h: SceneHost) {
   host = h;
@@ -99,6 +103,7 @@ export async function openScene(sceneId: string, s: Scene) {
   await rebuild();
   frameAll();
   renderLog();
+  clearTimeout(hist.t); hist.undo = []; hist.redo = []; hist.cur = JSON.stringify(s); hist.t = 0;
 }
 async function close() {
   await twin?.stopAll();
@@ -152,7 +157,7 @@ function setupViewport() {
     if (!inScene() || !twin) return;
     twin.step(dt);
     for (const v of views) { v.product.setPose(v.robot.sim.pose); v.product.tick(dt, now); }
-    for (const o of twin.objects) { const m = pickMeshes.get(o.index); if (m) o.m.decompose(m.position, m.quaternion, m.scale); }
+    for (const o of twin.objects) { const m = o.index !== draggingObj && pickMeshes.get(o.index); if (m) o.m.decompose(m.position, m.quaternion, m.scale); }
     vp!.throttle = views.some(v => v.robot.runtime?.running && (v.robot.board.runtime === 'rp2040-emu' || v.robot.board.runtime === 'avr-emu'));
     placeTags();
     uiT += dt; if (uiT > 0.25) { uiT = 0; liveSide(); }
@@ -198,35 +203,90 @@ function placeTags() {
   }
 }
 
-/** Drag a robot across the floor; Shift-drag turns it. Only while it is stopped. */
+/** Drag a robot or any object across the floor; Shift-drag turns it. Only while the robots are stopped. */
 function wireDrag() {
   const canvas = vp!.renderer.domElement, ray = new THREE.Raycaster(), floor = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
-  let drag: { v: View; start: THREE.Vector3; pose: SceneRobot['pose']; x0: number; turn: boolean } | null = null;
+  type Drag = { start: THREE.Vector3; x0: number; turn: boolean } & ({ kind: 'robot'; v: View; pose: SceneRobot['pose'] } | { kind: 'obj'; i: number; mesh: THREE.Object3D; pos: [number, number]; rot: number });
+  let drag: Drag | null = null;
   const floorAt = (e: PointerEvent) => {
     const r = canvas.getBoundingClientRect();
     ray.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), vp!.camera);
     return ray.ray.intersectPlane(floor, new THREE.Vector3())?.multiplyScalar(10) ?? null; // world units are cm
   };
   canvas.addEventListener('pointerdown', e => {
-    if (e.button !== 0) return;
+    if (e.button !== 0 || !scene || !twin) return;
     const meshes: THREE.Object3D[] = [], owner = new Map<THREE.Object3D, View>();
     for (const v of views) v.product.group.traverse(o => { if ((o as any).isMesh) { meshes.push(o); owner.set(o, v); } });
+    worldG.traverse(o => { if (o.userData.obstacle !== undefined) meshes.push(o); });
     const hit = vp!.hit(e, meshes); if (!hit) return;
-    const v = owner.get(hit.object)!; select(v.robot.def.id);
-    if (v.robot.runtime) { toast(`Stop ${v.robot.def.name} to move it`); return; }
     const start = floorAt(e); if (!start) return;
-    drag = { v, start, pose: { ...v.robot.def.pose }, x0: e.clientX, turn: e.shiftKey };
+    const v = owner.get(hit.object);
+    if (v) {
+      select(v.robot.def.id);
+      if (v.robot.runtime) { toast(`Stop ${v.robot.def.name} to move it`); return; }
+      drag = { kind: 'robot', v, start, pose: { ...v.robot.def.pose }, x0: e.clientX, turn: e.shiftKey };
+    } else {
+      const i = hit.object.userData.obstacle as number, o = scene.world.obstacles[i]; if (!o) return;
+      if (twin.running) { toast('Stop the robots to move things in the world'); return; }
+      drag = { kind: 'obj', i, mesh: hit.object, start, pos: [...o.pos] as [number, number], rot: o.rot ?? 0, x0: e.clientX, turn: e.shiftKey };
+      draggingObj = i;
+    }
     vp!.controls.enabled = false; canvas.setPointerCapture(e.pointerId);
   });
   canvas.addEventListener('pointermove', e => {
-    if (!drag) return;
-    const d = drag.v.robot.def;
-    if (drag.turn) d.pose.yaw = Math.round((drag.pose.yaw - (e.clientX - drag.x0) * 0.6) % 360);
-    else { const p = floorAt(e); if (!p) return; const half = scene!.world.size / 2 - 50; d.pose.x = Math.round(Math.max(-half, Math.min(half, drag.pose.x + p.x - drag.start.x))); d.pose.z = Math.round(Math.max(-half, Math.min(half, drag.pose.z + p.z - drag.start.z))); }
-    twin!.place(drag.v.robot); liveSide();
+    if (!drag || !scene) return;
+    if (drag.kind === 'robot') {
+      const d = drag.v.robot.def;
+      if (drag.turn) d.pose.yaw = Math.round((drag.pose.yaw - (e.clientX - drag.x0) * 0.6) % 360);
+      else { const p = floorAt(e); if (!p) return; const half = scene.world.size / 2 - 50; d.pose.x = Math.round(Math.max(-half, Math.min(half, drag.pose.x + p.x - drag.start.x))); d.pose.z = Math.round(Math.max(-half, Math.min(half, drag.pose.z + p.z - drag.start.z))); }
+      twin!.place(drag.v.robot); liveSide();
+      return;
+    }
+    const o = scene.world.obstacles[drag.i];
+    if (drag.turn) o.rot = Math.round((drag.rot - (e.clientX - drag.x0) * 0.6) % 360);
+    else {
+      const p = floorAt(e); if (!p) return;
+      const half = scene.world.size / 2 - Math.max(o.size[0], o.size[2]) / 2;
+      o.pos = [Math.round(Math.max(-half, Math.min(half, drag.pos[0] + p.x - drag.start.x))), Math.round(Math.max(-half, Math.min(half, drag.pos[1] + p.z - drag.start.z)))];
+    }
+    drag.mesh.position.set(o.pos[0], o.size[1] / 2, o.pos[1]); drag.mesh.rotation.set(0, (o.rot ?? 0) * Math.PI / 180, 0); drag.mesh.quaternion.setFromEuler(drag.mesh.rotation);
   });
-  const end = () => { if (!drag) return; drag = null; vp!.controls.enabled = true; changed(); renderSide(); };
+  const end = () => {
+    if (!drag) return;
+    const d = drag; drag = null; draggingObj = null; vp!.controls.enabled = true;
+    if (d.kind === 'obj' && scene && twin) twin.setWorld({ ...scene.world, obstacles: [...scene.world.obstacles] }); // rebuild the blocks and physics at the new spot
+    changed(); renderWorld(); renderSide();
+  };
   canvas.addEventListener('pointerup', end); canvas.addEventListener('pointercancel', end);
+}
+
+// ------------------------------------------------------------------ undo / redo
+function snapshot() {
+  clearTimeout(hist.t); hist.t = 0;
+  if (!scene) return;
+  const s = JSON.stringify(scene);
+  if (!hist.cur) { hist.cur = s; return; }
+  if (s === hist.cur) return;
+  hist.undo.push(hist.cur); if (hist.undo.length > 100) hist.undo.shift();
+  hist.cur = s; hist.redo = [];
+}
+/** Cmd/Ctrl+Z and Cmd/Ctrl+Y (or Shift+Cmd/Ctrl+Z) in the scene. */
+export async function sceneHistory(dir: 'undo' | 'redo') {
+  if (!scene || !twin) return;
+  if (twin.running) { toast('Stop the robots to undo or redo'); return; }
+  if (hist.t) snapshot();
+  const from = dir === 'undo' ? hist.undo : hist.redo, to = dir === 'undo' ? hist.redo : hist.undo;
+  const target = from.pop();
+  if (target == null) { toast(dir === 'undo' ? 'Nothing to undo' : 'Nothing to redo'); return; }
+  to.push(hist.cur); hist.cur = target;
+  const keepSel = selected;
+  scene = JSON.parse(target) as Scene;
+  ($('#swName') as HTMLInputElement).value = scene.name;
+  await rebuild();
+  selected = views.some(v => v.robot.def.id === keepSel) ? keepSel : null;
+  renderSide();
+  clearTimeout(saveT); saveT = setTimeout(flush, 500);
+  toast(dir === 'undo' ? 'Undone' : 'Redone');
 }
 
 // ------------------------------------------------------------------ running
@@ -284,6 +344,7 @@ function renderLog() {
 function select(rid: string | null) { selected = rid; renderSide(); }
 function changed() {
   clearTimeout(saveT); saveT = setTimeout(flush, 500);
+  clearTimeout(hist.t); hist.t = setTimeout(snapshot, 500);
 }
 function flush() {
   clearTimeout(saveT); if (!scene || !id) return;

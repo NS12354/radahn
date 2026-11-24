@@ -113,6 +113,7 @@ export function drawWorld(w: World, g: THREE.Group, picks: Map<number, THREE.Mes
   w.obstacles.forEach((o, i) => {
     const m = new THREE.Mesh(o.shape === 'cyl' ? new THREE.CylinderGeometry(o.size[0] / 2, o.size[0] / 2, o.size[1], 32) : new THREE.BoxGeometry(o.size[0], o.size[1], o.size[2]), new THREE.MeshStandardMaterial({ color: new THREE.Color(o.color ?? '#c8743a'), roughness: 0.7 }));
     m.position.set(o.pos[0], o.size[1] / 2, o.pos[1]); m.rotation.y = (o.rot ?? 0) * Math.PI / 180; m.castShadow = true;
+    m.userData.obstacle = i; // so the views can drag any object
     if (movable(o)) picks.set(i, m);
     g.add(m);
   });
@@ -168,10 +169,14 @@ export class BuiltProduct extends Product {
     this.mm.add(this.worldG);
   }
 
-  /** Move the pickable blocks to where the robot sim has them (world mm). */
+  /** Move the pickable blocks to where the robot sim has them (world mm). Skips the one being dragged. */
   setObjects(poses: Map<number, THREE.Matrix4>) {
-    for (const [i, m] of poses) { const mesh = this.pickMeshes.get(i); if (mesh) m.decompose(mesh.position, mesh.quaternion, mesh.scale); }
+    for (const [i, m] of poses) { const mesh = i !== this.draggingObj && this.pickMeshes.get(i); if (mesh) m.decompose(mesh.position, mesh.quaternion, mesh.scale); }
   }
+  /** Obstacle index being dragged in the view (its mesh follows the pointer, not the sim). */
+  draggingObj: number | null = null;
+  /** Every object in the drawn world, for dragging (mesh.userData.obstacle is its index). */
+  worldObjects(): THREE.Object3D[] { const out: THREE.Object3D[] = []; this.worldG.traverse(o => { if (o.userData.obstacle !== undefined) out.push(o); }); return out; }
 
   constructor(public model: BuiltModel, private displays: string[] = []) {
     super();

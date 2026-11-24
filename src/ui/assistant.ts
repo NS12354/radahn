@@ -3,8 +3,9 @@
  * the visitor's own Anthropic key, and locally. Claude sees the board, wiring and
  * code, answers questions, and proposes file changes the person applies or declines.
  *
- * The conversation lives in this tab only (per project, not saved). It is
- * append-only: Claude's turns are sent back exactly as received.
+ * The conversation is saved per project in this browser (store.ts, not in the
+ * project file), so it survives a reload. It is append-only: Claude's turns are
+ * sent back exactly as received.
  */
 import type Anthropic from '@anthropic-ai/sdk';
 import type { App } from './app';
@@ -13,6 +14,7 @@ import { device } from './elec';
 import { projectFacts } from './claude';
 import { aiFetch } from '../app/access';
 import { track } from './track';
+import { loadChat, saveChat } from '../app/store';
 
 type Msg = Anthropic.Beta.BetaMessageParam;
 interface Edit { id: string; path: string; content?: string; summary?: string; invalid?: boolean; state: 'open' | 'applied' | 'declined' }
@@ -20,15 +22,31 @@ interface Edit { id: string; path: string; content?: string; summary?: string; i
 const CODE = /\.(py|ino|h|hpp|c|cpp)$/i;
 let A: App;
 type Entry = { who: 'you'; text: string } | { who: 'claude'; text: string; edits: string[]; warn?: string } | { who: 'err'; text: string };
-const chats = new Map<string, { history: Msg[]; stateSent: string; edits: Edit[]; log: Entry[] }>();
+const chats = new Map<string, Chat>();
 let busy = false;
 
 const shown = () => document.body.classList.contains('asst-on');
 const key = () => A.projectId ?? 'scratch';
-function chat() {
+type Chat = { history: Msg[]; stateSent: string; edits: Edit[]; log: Entry[] };
+const blank = (): Chat => ({ history: [], stateSent: '', edits: [], log: [] });
+function chat(): Chat {
   let c = chats.get(key());
-  if (!c) { c = { history: [], stateSent: '', edits: [], log: [] }; chats.set(key(), c); }
+  if (!c) { c = blank(); chats.set(key(), c); }
   return c;
+}
+/** Bring a project's saved chat back (once per project per page load). */
+const loaded = new Set<string>();
+async function restore() {
+  const k = key(); if (!A.projectId || loaded.has(k)) return;
+  loaded.add(k);
+  const saved = await loadChat<Chat>(k);
+  if (saved && Array.isArray(saved.history) && Array.isArray(saved.log) && !chats.get(k)?.log.length) { chats.set(k, { ...blank(), ...saved }); if (shown() && key() === k) render(); }
+}
+/** Save after every change (reply, apply, decline, new chat). The page's own project id only. */
+function persist(k = key()) {
+  if (k === 'scratch') return;
+  const c = chats.get(k);
+  void saveChat(k, c && c.log.length ? c : null).catch(() => { /* storage full or blocked: the chat still works this session */ });
 }
 
 /** The project as Claude should see it now. */
@@ -87,10 +105,10 @@ function bindEdits(root: HTMLElement) {
   const c = chat(), find = (id?: string) => c.edits.find(e => e.id === id);
   root.querySelectorAll<HTMLButtonElement>('[data-app]').forEach(b => b.onclick = () => {
     const e = find(b.dataset.app); if (!e || e.state !== 'open') return;
-    device.setFile(e.path, e.content!); e.state = 'applied';
+    device.setFile(e.path, e.content!); e.state = 'applied'; persist();
     track('code', `Applied Claude's change to ${e.path}`); toast(`Applied to ${e.path}. Press Run to try it.`); rerenderEdits();
   });
-  root.querySelectorAll<HTMLButtonElement>('[data-dec]').forEach(b => b.onclick = () => { const e = find(b.dataset.dec); if (e) { e.state = 'declined'; rerenderEdits(); } });
+  root.querySelectorAll<HTMLButtonElement>('[data-dec]').forEach(b => b.onclick = () => { const e = find(b.dataset.dec); if (e) { e.state = 'declined'; persist(); rerenderEdits(); } });
   root.querySelectorAll<HTMLButtonElement>('[data-view]').forEach(b => b.onclick = () => {
     const e = find(b.dataset.view); if (!e) return;
     const pre = b.closest('.asedit')!.nextElementSibling;
@@ -105,7 +123,7 @@ async function send() {
   if (busy) return;
   const input = $('#asInput') as HTMLTextAreaElement, text = input.value.trim();
   if (!text) return;
-  const c = chat();
+  const c = chat(), k = key();
   // answer the tool calls from Claude's last turn, then the project state if it changed, then the message
   const last = c.history.at(-1);
   const results: Anthropic.Beta.BetaToolResultBlockParam[] = last?.role === 'assistant' && Array.isArray(last.content)
@@ -155,7 +173,7 @@ async function send() {
     c.log.pop(); // keep the conversation as it was; put the message back to retry
     input.value = text;
     c.log.push({ who: 'err', text: e.message });
-  } finally { busy = false; render(); }
+  } finally { busy = false; persist(k); render(); }
 }
 
 export function showAssistant(on: boolean) {
@@ -171,7 +189,7 @@ export function initAssistant(app: App) {
   $('#tabSerial').addEventListener('click', () => showAssistant(false));
   $('#tabClaude').addEventListener('click', () => showAssistant(false));
   $('#asSend').onclick = () => { void send(); };
-  $('#asNew').onclick = () => { chats.delete(key()); render(); };
+  $('#asNew').onclick = () => { chats.delete(key()); persist(); render(); };
   const input = $('#asInput') as HTMLTextAreaElement;
   input.addEventListener('keydown', e => {
     e.stopPropagation(); // keep studio shortcuts (space = press, arrows = dial) out of the chat box
@@ -179,4 +197,4 @@ export function initAssistant(app: App) {
   });
 }
 /** Switching project: show that project's chat. */
-export function assistantProjectChanged() { if (shown()) render(); }
+export function assistantProjectChanged() { void restore(); if (shown()) render(); }

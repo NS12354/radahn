@@ -1,5 +1,6 @@
 import './styles.css';
 import * as THREE from 'three';
+import { worldDragStart, worldDragging } from './ui/worlddrag';
 import { initAssistant, assistantProjectChanged } from './ui/assistant';
 import { manageAiKey, setAccessBase } from './app/access';
 import { HOSTED } from './hosted';
@@ -22,7 +23,7 @@ import { robotProject, type RobotKind } from './app/robots';
 import { ElectronicsView } from './scene/electronics';
 import { gizmoBusy, initModeler, newBuiltModel, runAutoBuild, syncGizmo } from './ui/modeler';
 import { atHome, initHome, renderHome, showHome, hideHome } from './ui/home';
-import { initScene, openScene } from './ui/scene';
+import { initScene, inScene, openScene, sceneHistory } from './ui/scene';
 import { deleteScene, loadScene, newScene, newSceneId, saveScene } from './app/scene';
 import { endTour, initTour, startTour, tourSeen, touring } from './ui/tour';
 import { listen, modelerUrl, post } from './app/sync';
@@ -71,6 +72,8 @@ class FormframeApp implements App {
   private hT: any = null;
   private clT: any = null;
   private saveT: any = null;
+  /** Undo / redo: serialized project snapshots, taken once changes settle (a drag or a burst of typing is one step). */
+  private hist = { undo: [] as string[], redo: [] as string[], cur: '', t: null as any, restoring: false };
   private dirHandle: any = null;
   /** Store id of the open project; null for a scratch session (the tour) that is never saved. */
   projectId: string | null = null;
@@ -142,6 +145,46 @@ class FormframeApp implements App {
     if (what === 'electronics') { clearTimeout(this.clT); this.clT = setTimeout(() => { claudeFilesChanged(); claudeContextChanged(); }, 250); }
     clearTimeout(this.saveT);
     this.saveT = setTimeout(() => this.flush(), 400);
+    if (!this.hist.restoring) { clearTimeout(this.hist.t); this.hist.t = setTimeout(() => this.snapshot(), 500); }
+  }
+
+  // ------------------------------------------------------------ undo / redo
+  private snapshot() {
+    clearTimeout(this.hist.t); this.hist.t = null;
+    const h = this.hist, s = serializeProject(this.project);
+    if (!h.cur) { h.cur = s; return; }
+    if (s === h.cur) return;
+    h.undo.push(h.cur); if (h.undo.length > 100) h.undo.shift();
+    h.cur = s; h.redo = [];
+  }
+  /** A newly opened project starts with an empty history. */
+  private resetHistory() { clearTimeout(this.hist.t); this.hist = { undo: [], redo: [], cur: serializeProject(this.project), t: null, restoring: false }; }
+  async undo() { return this.stepHistory('undo'); }
+  async redo() { return this.stepHistory('redo'); }
+  private async stepHistory(dir: 'undo' | 'redo') {
+    if (!this.projectId || atHome()) return;
+    if (this.hist.t) this.snapshot(); // take the change still settling first
+    const h = this.hist, from = dir === 'undo' ? h.undo : h.redo, to = dir === 'undo' ? h.redo : h.undo;
+    const target = from.pop();
+    if (target == null) { toast(dir === 'undo' ? 'Nothing to undo' : 'Nothing to redo'); return; }
+    to.push(h.cur); h.cur = target;
+    await this.restoreSnapshot(target);
+    toast(dir === 'undo' ? 'Undone' : 'Redone');
+  }
+  private async restoreSnapshot(json: string) {
+    const p = parseProject(json), before = this.project.product.built;
+    // keep the model revision moving forward, so the modeler window takes the restored model
+    if (p.product.built) { p.product.built.rev = Math.max(before?.rev ?? 0, p.product.built.rev ?? 0) + 1; this.builtSig = JSON.stringify({ ...p.product.built, rev: 0 }); }
+    const cam = this.viewport.camera.position.clone(), target = this.viewport.controls.target.clone();
+    this.hist.restoring = true;
+    try {
+      this.project = p; this.bench.env = p.env;
+      document.body.classList.toggle('no-sm', !hasStateMachine(p));
+      await this.rebuildProduct();
+      this.viewport.camera.position.copy(cam); this.viewport.controls.target.copy(target); this.viewport.controls.update();
+      this.renderAll(); renderElec(this); this.setMode(this.mode);
+      this.changed('product'); this.changed('electronics');
+    } finally { this.hist.restoring = false; }
   }
 
   /** Write the open project to the store now. Refreshes the thumbnail at most every few seconds. */
@@ -380,6 +423,7 @@ class FormframeApp implements App {
     this.renderAll();
     renderElec(this);
     this.setMode(this.mode);
+    this.resetHistory();
     assistantProjectChanged();
     hideHome(); this.viewport.resize(); toast(msg);
     if (id) setTimeout(() => { if (this.projectId === id && !this.saveT) this.flush(true, false); }, 800); // first thumbnail once rendered
@@ -546,6 +590,18 @@ class FormframeApp implements App {
     $('#modal').onclick = e => { if ((e.target as HTMLElement).id === 'modal') closeModal(); };
     $('#mCopy').onclick = () => copyText($('#mBody').textContent ?? '');
     window.addEventListener('keydown', e => {
+      const mod = e.metaKey || e.ctrlKey, k = e.key.toLowerCase();
+      if (mod && !e.altKey && (k === 'z' || k === 'y')) {
+        const redo = k === 'y' || e.shiftKey, t = e.target as HTMLElement | null;
+        // text boxes keep their own undo; Cmd/Ctrl+Y redoes there too
+        if (t && (t.closest('input, textarea, select, [contenteditable=""], [contenteditable="true"]'))) {
+          if (k === 'y' && (t as HTMLTextAreaElement).value !== undefined) { e.preventDefault(); document.execCommand('redo'); }
+          return;
+        }
+        if (atHome() || document.querySelector('dialog[open]')) return;
+        if (inScene()) { e.preventDefault(); void sceneHistory(redo ? 'redo' : 'undo'); return; }
+        e.preventDefault(); void (redo ? this.redo() : this.undo()); return;
+      }
       if ((e.metaKey || e.ctrlKey) && e.key === 's') { e.preventDefault(); if (atHome()) return; this.dirHandle ? this.saveFolder() : this.saveDownload(); }
       if (e.key === 'Escape') { if ($('#modal').classList.contains('show')) closeModal(); else if (document.body.classList.contains('present')) $('#bPresent').click(); }
     });
@@ -567,6 +623,7 @@ class FormframeApp implements App {
       if (e.target !== cv) return;
       down = { x: e.clientX, y: e.clientY };
       audio.unlock();
+      if (worldDragStart(this, e)) return; // any object in a robot's world can be dragged
       if (this.mode !== 'proto' && this.mode !== 'elec') return;
       const h = this.viewport.hit(e, this.product.pickables()); if (!h) return;
       const role = this.product.roleOf(h.object);
@@ -590,7 +647,7 @@ class FormframeApp implements App {
       const wasDrag = !!drag; drag = null; this.viewport.controls.enabled = true;
       if (!down || e.target !== cv) { down = null; return; }
       const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4; down = null;
-      if (moved || wasDrag || gizmoBusy()) return;
+      if (moved || wasDrag || gizmoBusy() || worldDragging()) return;
       const h = this.viewport.hit(e, this.product.pickables());
       if (this.mode === 'design') this.selectPart(h ? this.product.partOf(h.object) : null);
       else if (this.mode === 'review' && h) addComment(this, h.point as THREE.Vector3, this.partName(h.object));
