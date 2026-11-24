@@ -72,7 +72,7 @@ describe('visitor brings their own Anthropic key', () => {
   beforeEach(() => { process.env.FF_SESSION_SECRET = 'test-secret'; process.env.VERCEL = '1'; process.env.FF_ACCESS_CODE = 'c'; });
 
   it('checks the key with Anthropic and saves it only in an encrypted cookie', async () => {
-    const f = vi.fn(async () => new Response('{"data":[]}', { status: 200 }));
+    const f = vi.fn(async (_url: string) => new Response('{"data":[]}', { status: 200 }));
     vi.stubGlobal('fetch', f);
     const { aiKeyRoute } = await import('../server/aikey.mjs');
     const r = await aiKeyRoute({ ...base, method: 'POST', body: { key }, cookie: '' });
