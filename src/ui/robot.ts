@@ -12,7 +12,7 @@ import { RosBridge } from '../app/rosbridge';
 import { exportUrdf, importUrdf } from '../app/urdf';
 import { firmwareRunning } from './elec';
 import { COMPONENTS } from '../hw/library/components';
-import type { BuiltModel, World } from '../app/project';
+import { MATERIALS, materialOf, objTitle, type BuiltModel, type ObstacleMaterial, type World } from '../app/project';
 import { defaultAutoOpts } from '../app/project';
 import { track } from './track';
 import { ARM_PICK, armTable, pickBlock } from '../app/robots';
@@ -54,7 +54,7 @@ export function robotFrame(dt: number) {
   const s = JSON.stringify(m.parts.map(p => [p.id, p.parent, p.joint, p.foot, p.pos, p.rot, p.size])) + JSON.stringify(m.robot ?? null);
   if (!sim || sim.model !== m) {
     sim = new RobotSim(m); sim.settle(); sig = s; render(); prod.setPose(sim.pose); prod.setWorld(m.robot?.world); A.viewport.frame(prod.group);
-    if (m.robot?.physics) { const me = sim; me.setPhysics(true, A.project.electronics.comps).then(() => render()).catch(e => toast("Physics couldn't start: " + e.message)); }
+    if (m.robot && m.robot.physics !== false) { const me = sim; me.setPhysics(true, A.project.electronics.comps).then(() => render()).catch(e => toast("Physics couldn't start: " + e.message)); }
   }
   else if (s !== sig) { sig = s; sim.resync(); sim.settle(); render(); }
   sim.step(dt, A.project.electronics.comps, A.bench, firmwareRunning());
@@ -90,9 +90,9 @@ function render() {
       <div class="rpbtns"><button class="btn" id="rpRec" title="Record the current joint angles">● Record pose</button><button class="btn" id="rpIns" title="Put the recorded poses into the code">Use in code</button><button class="btn" id="rpPlay" data-ico="play">Play</button><button class="btn" id="rpClr">Clear</button></div>
       <div class="rpposes">${(sp.poses ?? []).map((p, i) => `<span class="rppose" data-i="${i}" title="Click to go to it">${esc(p.name)}</span>`).join('') || '<span class="dim">No poses yet (teach mode: move the sliders, then Record)</span>'}</div>
       <div class="rprow"><label>World</label><select id="rpWorld">${Object.entries(WORLDS).map(([k, w]) => `<option value="${k}" ${k === worldKind(sp.world) ? 'selected' : ''}>${w.label}</option>`).join('')}</select>
-        <label title="Rigid-body physics (Rapier): gravity, mass, friction, collisions and servo torque limits">Physics</label><select id="rpPhys"><option value="1" ${sp.physics ? 'selected' : ''}>Realistic</option><option value="" ${sp.physics ? '' : 'selected'}>Simple</option></select>
+        <label title="Rigid-body physics (Rapier): gravity, mass, friction, collisions and servo torque limits">Physics</label><select id="rpPhys"><option value="1" ${sp.physics !== false ? 'selected' : ''}>Realistic</option><option value="" ${sp.physics !== false ? '' : 'selected'}>Off (passes through things)</option></select>
         <label>Moves on</label><select id="rpMobile">${[['fixed', 'Bolted down'], ['wheels', 'Wheels'], ['legs', 'Legs']].map(([k, l]) => `<option value="${k}" ${sp.mobile === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
-      ${sp.world ? `<div class="rprow rpobjs"><label>Objects</label>${sp.world.obstacles.map((o, i) => `<span class="rpobj" title="${o.pick ? 'The gripper can pick this up' : 'Fixed in place'}"><i style="background:${esc(o.color ?? '#c8743a')}"></i>${esc(objName(o))}<button class="rpdel" data-i="${i}" title="Remove ${esc(objName(o).toLowerCase())}" aria-label="Remove ${esc(objName(o).toLowerCase())}">×</button></span>`).join('') || '<span class="dim">None</span>'}<button class="btn" id="rpAddBlock" title="Add a 20 mm block the gripper can pick up">+ Block</button></div>` : ''}
+      ${sp.world ? `<div class="rprow rpobjs"><label>Objects</label>${sp.world.obstacles.map((o, i) => `<span class="rpobj" title="${esc(objTitle(o))}"><i style="background:${esc(o.color ?? '#c8743a')}"></i>${esc(objName(o))}<select class="rpmat" data-i="${i}" aria-label="What the ${esc(objName(o).toLowerCase())} is made of">${(Object.keys(MATERIALS) as ObstacleMaterial[]).map(k => `<option value="${k}" ${materialOf(o) === k ? 'selected' : ''}>${MATERIALS[k].label}</option>`).join('')}</select><button class="rpdel" data-i="${i}" title="Remove ${esc(objName(o).toLowerCase())}" aria-label="Remove ${esc(objName(o).toLowerCase())}">×</button></span>`).join('') || '<span class="dim">None</span>'}<button class="btn" id="rpAddBlock" title="Add a 20 mm block the gripper can pick up">+ Block</button><button class="btn" id="rpAddBox" title="Add a cardboard box for the robot to push">+ Box</button></div>` : ''}
       <div class="rprow adv"><label>Mass</label><input type="number" id="rpMass" value="${sp.mass}" min="10" step="50"> g
         ${becs.length ? `<label>Servo supply</label><input type="number" id="rpAmps" value="${becs[0].props?.amps ?? 5}" min="1" step="1"> A` : ''}</div>
       <div class="rpbtns"><button class="btn" id="rpReset" data-ico="reset">Reset position</button><button class="btn adv" id="rpUrdf" title="Save a URDF for ROS, RViz and Gazebo">Export URDF</button><button class="btn adv" id="rpImp" title="Load a robot from a URDF file">Import URDF…</button></div>
@@ -127,7 +127,17 @@ function render() {
     obs.push(pickBlock(at as [number, number]));
     A.changed('product'); render(); track('model', 'Robot world: added a block');
   };
-  $('#rpPhys').onchange = async e => { sp.physics = !!(e.target as HTMLSelectElement).value; sim!.reset(); await sim!.setPhysics(!!sp.physics, A.project.electronics.comps); A.changed('product'); toast(sp.physics ? 'Realistic physics on: gravity, friction, collisions and servo torque limits' : 'Simple motion model'); };
+  panel.querySelectorAll<HTMLSelectElement>('.rpmat').forEach(s => (s.onchange = () => {
+    const o = sp.world!.obstacles[+s.dataset.i!]; o.material = s.value as ObstacleMaterial; delete o.mass;
+    A.changed('product'); render(); toast(objTitle(o)); track('model', `Robot world: the ${objName(o).toLowerCase()} is now ${MATERIALS[o.material].label.toLowerCase()}`);
+  }));
+  $('#rpAddBox').onclick = () => {
+    const obs = sp.world!.obstacles, n = obs.filter(o => o.name?.startsWith('Cardboard box')).length;
+    const at: [number, number] = sp.kind === 'arm' ? [0, 230 + 30 * n] : [((n % 3) - 1) * 220, 450 + Math.floor(n / 3) * 220];
+    obs.push(sp.kind === 'arm' ? { shape: 'box', pos: at, size: [50, 40, 50], color: '#c9a36b', name: 'Cardboard box', material: 'cardboard' } : { shape: 'box', pos: at, size: [160, 120, 160], color: '#c9a36b', name: 'Cardboard box', material: 'cardboard' });
+    A.changed('product'); render(); track('model', 'Robot world: added a cardboard box');
+  };
+  $('#rpPhys').onchange = async e => { sp.physics = !!(e.target as HTMLSelectElement).value; sim!.reset(); await sim!.setPhysics(!!sp.physics, A.project.electronics.comps); A.changed('product'); toast(sp.physics ? 'Realistic physics: gravity, mass, friction, collisions and servo torque limits' : 'Physics off: ideal motion, the robot passes through things'); };
   $('#rpMobile').onchange = e => { sp.mobile = (e.target as HTMLSelectElement).value as any; sim!.reset(); A.changed('product'); };
   $('#rpMass').onchange = e => { sp.mass = Math.max(10, +(e.target as HTMLInputElement).value); A.changed('product'); };
   if (becs.length) $('#rpAmps').onchange = e => { becs[0].props = { ...becs[0].props, amps: Math.max(1, +(e.target as HTMLInputElement).value) }; A.changed('electronics'); };

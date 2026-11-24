@@ -113,12 +113,16 @@ How it works (`src/app/kinematics.ts`, `src/app/robot.ts`):
 - Circuit boards are styled per board family, with traces, silkscreen, chips, gold header pins and USB.
 - Also: HC-SR04, PCA9685 and motor-driver modules, drilled anodised links, battery packs, casters, shells and a camera head.
 
-**Physics** (`src/app/physics.ts`, Rapier): with *Physics: Realistic* in the Robot panel:
+**Physics** (`src/app/physics.ts`, Rapier) is on for every robot and scene (*Physics: Realistic*):
 - Each link is a rigid body, and servos weigh what they really weigh.
 - Joints are motors capped at the servo's stall torque, so weak servos sag.
-- Wheels get traction from friction. The floor, walls and obstacles collide, and pickable blocks are real objects.
-- Walking, turning and falling over come from the physics.
-- *Simple* uses the kinematic contact model, which is faster.
+- Wheels get traction from friction. Walking, turning and falling over come from the physics.
+- **Objects have weight.** Each object in the world has a material: foam, cardboard box, plastic, wood, metal, or fixed in place. The material sets its weight (from its size, or a set `mass`) and its friction.
+  - Robots push light things, stall against heavy ones and can't pass through anything. A 450 g rover shoves a 200 g cardboard box across the room but can't budge a 1.8 kg wooden crate.
+  - Grippers hold objects by friction alone.
+  - Change a material, or add a box with **+ Box**, in the Robot panel.
+- Continuous collision detection stops fast parts tunnelling through thin objects.
+- *Off* is a faster ideal-motion model. It ignores weight and lets robots pass through things.
 
 **Beginner view.**
 - **Simple** (the default) hides expert settings: Plan and GitHub, Blender, part import from links, URDF/ROS, mass, and advanced inspector rows. **Advanced** shows everything.
@@ -133,7 +137,7 @@ How it works (`src/app/kinematics.ts`, `src/app/robot.ts`):
 - **One shared world.** All robots share the floor, walls, line track, obstacles and blocks. Any arm can pick up any block, robots bump into each other, and one robot's sonar sees the others. *+ Block* with an arm selected puts a block (and a pad) where that arm's demo reaches.
 - **Run together.** *Run all* starts every robot's firmware. Each robot also has its own Run/Stop. The console shows every robot's serial output, labelled by name, with a tab per robot.
 - **Arrange.** Drag a robot to move it and Shift-drag to turn it, or type X, Z and heading. Robots can only be moved while stopped. *Reset* puts robots and blocks back where they started.
-- **Physics.** *Physics: Realistic* puts the whole scene in one rigid-body world. Robots collide with and push each other and the blocks, grippers hold by friction, and each servo is limited by its torque. *Simple* uses the faster kinematic model. The setting is saved with the scene; robots' own physics settings don't apply in a scene.
+- **Physics.** *Physics: Realistic* puts the whole scene in one rigid-body world. Robots collide with and push each other and the blocks, grippers hold by friction, and each servo is limited by its torque. It's on by default; *Off* uses the faster ideal-motion model. The setting is saved with the scene; robots' own physics settings don't apply in a scene.
 - **Limits.** Every emulated chip (RP2040, ATmega) shares one CPU, so three or more run noticeably slower than real time; a behavioral board (ESP32, Pi) is lighter. Physical boards and the ROS 2 bridge don't join scenes.
 
 ### The emulator runs slower than real time

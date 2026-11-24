@@ -220,7 +220,7 @@
     <span class="swkind">Scene</span>
     <input type="text" id="swName" aria-label="Scene name" spellcheck="false">
     <label class="swworld">World <select id="swWorld"></select></label>
-    <label class="swworld" title="Realistic: one rigid-body world for the whole scene (gravity, friction, servo torque, robots collide)">Physics <select id="swPhys"><option value="">Simple</option><option value="1">Realistic</option></select></label>
+    <label class="swworld" title="Realistic: one rigid-body world for the whole scene (gravity, mass, friction, servo torque; robots and objects collide)">Physics <select id="swPhys"><option value="1">Realistic</option><option value="">Off (passes through things)</option></select></label>
     <div class="swrun">
       <button class="btn primary" id="swRunAll" title="Start every robot's firmware" data-ico="play">Run all</button>
       <button class="btn" id="swStopAll" data-ico="stop">Stop all</button>

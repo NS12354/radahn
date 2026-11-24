@@ -128,6 +128,12 @@ export function obstacleGrams(o: Obstacle): number {
   return Math.round(vol * MATERIALS[materialOf(o)].density * 1000);
 }
 
+/** 'Cardboard box · 320 g', or 'Fixed in place'. */
+export function objTitle(o: Obstacle) {
+  const m = materialOf(o);
+  return m === 'fixed' ? 'Fixed in place' : `${MATERIALS[m].label} · ${obstacleGrams(o)} g${o.pick ? ' · a gripper can pick it up' : ' · robots can push it'}`;
+}
+
 export interface RobotSpec {
   kind: 'arm' | 'rover' | 'legs' | 'custom';
   /** How the body moves: bolted down, on wheels, or on legs. */
@@ -135,7 +141,7 @@ export interface RobotSpec {
   /** Total mass in grams (legs: load on the servos). */
   mass: number;
   world?: World;
-  /** Rigid-body physics (gravity, torque limits, friction) instead of the simple motion model. */
+  /** Rigid-body physics (gravity, mass, torque limits, friction, collisions). On unless set to false (then: ideal motion that passes through things). */
   physics?: boolean;
   /** Poses recorded in teach mode: joint part id → value. */
   poses?: { name: string; joints: Record<string, number> }[];

@@ -71,7 +71,7 @@ export function pickBlock(pos: [number, number] = ARM_PICK, color = '#3aa0ff'): 
 }
 /** The arm's table: a block to pick up and a green pad to put it on. */
 export function armTable(): World {
-  return { size: 700, obstacles: [pickBlock(), { shape: 'cyl', pos: ARM_PLACE, size: [60, 4, 60], color: '#33c27f', name: 'Pad' }] };
+  return { size: 700, obstacles: [pickBlock(), { shape: 'cyl', pos: ARM_PLACE, size: [60, 4, 60], color: '#33c27f', name: 'Pad', material: 'fixed' }] };
 }
 
 // ------------------------------------------------------------------ rover
@@ -98,9 +98,10 @@ function rover(board: BoardDef, mode: 'avoid' | 'line') {
     const sonar = comp('hcsr04', { TRIG: pick(), ECHO: pick() }, comps.length); comps.push(sonar);
     add('Ultrasonic sensor', 'box', [45, 20, 14], [0, 52, 88], { parent: chassis.id, kind: 'internal', comp: sonar.uid, detail: 'module:hcsr04' });
     world = { size: 2200, obstacles: [
-      { shape: 'box', pos: [0, 600], size: [400, 120, 120] }, { shape: 'cyl', pos: [-550, -200], size: [180, 200, 180], color: '#3aa0ff' },
-      { shape: 'box', pos: [600, -300], size: [160, 150, 360], color: '#33c27f' }, { shape: 'box', pos: [-450, 650], size: [200, 100, 200], color: '#e5c07b' },
-      { shape: 'cyl', pos: [350, 250], size: [120, 160, 120], color: '#c678dd' },
+      // a room's worth of things, light to heavy: the rover shoves the foam and cardboard, not the crate
+      { shape: 'box', pos: [0, 600], size: [400, 120, 120], name: 'Wooden beam', material: 'wood' }, { shape: 'cyl', pos: [-550, -200], size: [180, 200, 180], color: '#3aa0ff', name: 'Plastic bin', material: 'plastic', mass: 600 },
+      { shape: 'box', pos: [600, -300], size: [160, 150, 360], color: '#33c27f', name: 'Crate', material: 'fixed' }, { shape: 'box', pos: [-450, 650], size: [200, 100, 200], color: '#e5c07b', name: 'Cardboard box', material: 'cardboard' },
+      { shape: 'cyl', pos: [350, 250], size: [120, 160, 120], color: '#c678dd', name: 'Foam drum', material: 'foam' },
     ] };
   } else {
     for (const side of [1, -1] as const) {
@@ -138,7 +139,7 @@ function dog(board: BoardDef) {
     const low = add(`${nm} lower leg`, 'rbox', [12, 78, 16], [x1, H - 120 + 4, z], { param: 4, color: DARK, parent: up.id, detail: 'link', joint: joint('revolute', [x1, H - 80, z], [1, 0, 0], { min: -10, max: 150, drive: d(2) }) });
     add(`${nm} foot`, 'sphere', [18, 14, 18], [x1, 7, z], { color: '#1d1f23', finish: 'soft', parent: low.id, foot: true, detail: 'foot' });
   });
-  return { parts, comps: [pca, imu, bec], spec: { kind: 'legs', mobile: 'legs', mass: 1300, world: { size: 3000, obstacles: [] }, physics: true } as RobotSpec, name: 'Robot dog' };
+  return { parts, comps: [pca, imu, bec], spec: { kind: 'legs', mobile: 'legs', mass: 1300, world: { size: 3000, obstacles: [{ shape: 'box', pos: [320, 520], size: [160, 120, 160], color: '#e5c07b', name: 'Cardboard box', material: 'cardboard' }] }, physics: true } as RobotSpec, name: 'Robot dog' };
 }
 
 function hexapod(board: BoardDef) {
@@ -166,7 +167,7 @@ function hexapod(board: BoardDef) {
     const tibia = add(`${nm} tibia`, 'rbox', [12, T - 10, 14], [xt, H - (T - 10) / 2, z], { param: 4, color: DARK, parent: femur.id, detail: 'link', joint: joint('revolute', [xt, H, z], [0, 0, 1], { min: -70, max: 70, drive: d(2, side < 0) }) });
     add(`${nm} foot`, 'sphere', [14, 12, 14], [xt, 6, z], { color: '#1d1f23', finish: 'soft', parent: tibia.id, foot: true, detail: 'foot' });
   });
-  return { parts, comps: [L, R, bec], spec: { kind: 'legs', mobile: 'legs', mass: 1600, world: { size: 3000, obstacles: [] }, physics: true } as RobotSpec, name: 'Hexapod' };
+  return { parts, comps: [L, R, bec], spec: { kind: 'legs', mobile: 'legs', mass: 1600, world: { size: 3000, obstacles: [{ shape: 'cyl', pos: [-320, 520], size: [140, 140, 140], color: '#c678dd', name: 'Foam drum', material: 'foam' }] }, physics: true } as RobotSpec, name: 'Hexapod' };
 }
 
 // ------------------------------------------------------------------ pins

@@ -112,7 +112,7 @@ export class Twin {
     if (gen !== this.physGen) return; // a newer call won
     for (const r of this.robots) { r.sim.phys?.dispose(); r.sim.phys = null; r.sim.physWorld = undefined; }
     this.physics?.dispose(); this.physics = null;
-    this.scene.physics = on || undefined;
+    this.scene.physics = on ? undefined : false; // on is the default
     this.objects.length = 0; this.objects.push(...makeObjects(this.scene.world));
     for (const r of this.robots) this.place(r);
     if (!on) return;

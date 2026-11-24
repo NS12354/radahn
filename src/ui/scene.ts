@@ -25,7 +25,7 @@ import { RP2040Runtime } from '../hw/runtimes/rp2040';
 import { AVRRuntime } from '../hw/runtimes/avr';
 import { SimPythonRuntime } from '../hw/runtimes/sim-python';
 import { b64decode } from './dom';
-import { MATERIALS, materialOf, obstacleGrams, type Project, type World } from '../app/project';
+import { materialOf, objTitle, type Project, type World } from '../app/project';
 
 export interface SceneHost {
   base: string;
@@ -78,7 +78,7 @@ export function initScene(h: SceneHost) {
     const on = !!(e.target as HTMLSelectElement).value;
     try { await twin.setPhysics(on); } catch (err: any) { toast("Physics couldn't start: " + err.message); (e.target as HTMLSelectElement).value = ''; return; }
     changed(); renderSide();
-    toast(on ? 'Realistic physics: robots collide, push the blocks and each other, and grip by friction' : 'Simple motion model');
+    toast(on ? 'Realistic physics: robots collide, push objects by weight and each other, and grip by friction' : 'Physics off: ideal motion, robots pass through things');
   };
   $('#swRunAll').onclick = () => runAll();
   $('#swStopAll').onclick = () => twin?.stopAll().then(renderSide);
@@ -125,8 +125,8 @@ async function rebuild() {
     if (!p || !isRobot(p.product.built)) { missing.push(def); continue; }
     addView(def, p);
   }
-  ($('#swPhys') as HTMLSelectElement).value = s.physics ? '1' : '';
-  if (s.physics) await twin.setPhysics(true).catch(e => toast("Physics couldn't start: " + e.message));
+  ($('#swPhys') as HTMLSelectElement).value = s.physics !== false ? '1' : '';
+  if (s.physics !== false) await twin.setPhysics(true).catch(e => toast("Physics couldn't start: " + e.message));
   renderWorld(); renderSide();
 }
 function addView(def: SceneRobot, p: Project) {
@@ -411,8 +411,3 @@ function addBlock() {
   twin.setWorld({ ...w, obstacles: obs }); changed(); renderWorld(); renderSide();
 }
 
-/** 'Cardboard box · 320 g', or 'Fixed in place'. */
-export function objTitle(o: World['obstacles'][number]) {
-  const m = materialOf(o);
-  return m === 'fixed' ? 'Fixed in place' : `${MATERIALS[m].label} · ${obstacleGrams(o)} g${o.pick ? ' · a gripper can pick it up' : ' · robots can push it'}`;
-}
