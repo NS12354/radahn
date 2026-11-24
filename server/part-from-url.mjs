@@ -116,8 +116,8 @@ const SYSTEM = `You read electronics product pages and datasheets and extract th
 Only report what the page or datasheet supports; use null and list the field under "missing" when a value isn't given. Prefer the breakout/module numbers over the bare chip when the link is a module. Pin labels should match the module's silkscreen.`;
 
 // ---------------------------------------------------------------- extraction
-async function withClaude(page, pdfs) {
-  const client = new Anthropic();
+async function withClaude(page, pdfs, apiKey) {
+  const client = new Anthropic(apiKey ? { apiKey } : undefined);
   const content = [];
   for (const p of pdfs) content.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: p.buf.toString('base64') }, title: p.url });
   let text = page?.text ?? '', truncated = false;
@@ -169,7 +169,8 @@ export function heuristic(page) {
   };
 }
 
-export async function partFromUrl(url) {
+/** apiKey: a visitor's own key (aikey.mjs), or undefined for the site's key. */
+export async function partFromUrl(url, apiKey) {
   const first = await get(url);
   const notes = [];
   let page = null; const pdfs = [];
@@ -185,14 +186,14 @@ export async function partFromUrl(url) {
   }
   const datasheet = pdfs[0]?.url ?? null, title = page?.title ?? '';
   try {
-    const r = await withClaude(page, pdfs);
+    const r = await withClaude(page, pdfs, apiKey);
     if (r.truncated) notes.push('The page was very long, so only the first part of it was read.');
     return { part: r.part, source: 'claude', model: r.model, notes, datasheet, title, url: first.url };
   } catch (e) {
     if (e?.refusal) throw e;
     const auth = e instanceof Anthropic.AuthenticationError || /api key|authentication|credentials|apiKey/i.test(e?.message ?? '');
-    if (!page) throw new Error(auth ? (process.env.VERCEL ? 'Reading a PDF needs Claude, and the site’s Anthropic API key is missing or invalid right now.' : 'Reading a PDF needs Claude: set ANTHROPIC_API_KEY (or run `ant auth login`) and restart `npm run dev`.') : `Couldn't read the datasheet: ${e.message}`);
-    notes.push(auth ? (process.env.VERCEL ? 'The site’s Anthropic API key is missing or invalid, so this is a rough guess from the page text.' : 'No Anthropic credentials, so this is a rough guess from the page text. Set ANTHROPIC_API_KEY (or run `ant auth login`) and restart `npm run dev` for a proper read.') : `Claude couldn't read it (${e.message}), so this is a rough guess from the page text.`);
+    if (!page) throw new Error(auth ? (apiKey ? 'Anthropic rejected your API key, so the PDF couldn’t be read.' : process.env.VERCEL ? 'Reading a PDF needs Claude, and the site’s Anthropic API key is missing or invalid right now.' : 'Reading a PDF needs Claude: set ANTHROPIC_API_KEY (or run `ant auth login`) and restart `npm run dev`.') : `Couldn't read the datasheet: ${e.message}`);
+    notes.push(auth ? (apiKey ? 'Anthropic rejected your API key, so this is a rough guess from the page text. Add it again from the Project menu (Claude API key).' : process.env.VERCEL ? 'The site’s Anthropic API key is missing or invalid, so this is a rough guess from the page text.' : 'No Anthropic credentials, so this is a rough guess from the page text. Set ANTHROPIC_API_KEY (or run `ant auth login`) and restart `npm run dev` for a proper read.') : `Claude couldn't read it (${e.message}), so this is a rough guess from the page text.`);
     return { part: heuristic(page), source: 'heuristic', notes, datasheet, title, url: first.url };
   }
 }

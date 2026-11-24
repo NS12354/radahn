@@ -35,12 +35,13 @@ Rules:
 - Write for a beginner: short, plain sentences, no jargon without a word of explanation.
 - Suggestions must be specific to this project (name the parts, files and screens) and not duplicate existing tasks or milestones that are already done.`;
 
-export async function planWithAI(context) {
+/** apiKey: a visitor's own key (aikey.mjs), or undefined for the site's key. */
+export async function planWithAI(context, apiKey) {
   if (!context || typeof context !== 'object') throw new Error('Missing project context.');
   const text = JSON.stringify(context);
   if (text.length > 400_000) throw new Error('This project is too large to send in one update.');
   let client;
-  try { client = new Anthropic(); } catch { throw new Error(NEEDS_KEY()); }
+  try { client = new Anthropic(apiKey ? { apiKey } : undefined); } catch { throw new Error(NEEDS_KEY()); }
   let res;
   try {
     res = await client.beta.messages.create({
@@ -53,8 +54,9 @@ export async function planWithAI(context) {
       messages: [{ role: 'user', content: `Here is the project. Update its progress.\n\n<project>\n${text}\n</project>` }],
     });
   } catch (e) {
-    if (e instanceof Anthropic.AuthenticationError || /api key|authentication|credentials/i.test(e?.message ?? '')) throw new Error(NEEDS_KEY());
+    if (e instanceof Anthropic.AuthenticationError || /api key|authentication|credentials/i.test(e?.message ?? '')) throw new Error(apiKey ? 'Anthropic rejected your API key. It may have been revoked: add it again from the Project menu (Claude API key).' : NEEDS_KEY());
     if (e instanceof Anthropic.RateLimitError) throw new Error('The AI is busy right now. Try again in a minute.');
+    if (/credit balance|billing/i.test(e?.message ?? '')) throw new Error(apiKey ? 'Your Anthropic account is out of credits. Top it up in the Anthropic Console.' : 'The site’s Anthropic account is out of credits. Use your own API key, or ask the owner.');
     throw new Error('The AI update failed: ' + (e?.message ?? e));
   }
   if (res.stop_reason === 'refusal') throw new Error('The AI declined to review this project.');

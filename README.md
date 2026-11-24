@@ -258,7 +258,7 @@ The studio is deployed on Vercel (static Vite build plus three functions in `api
 
 | Feature | Hosted | Notes |
 |---|---|---|
-| Plan AI, parts from a link | Yes | Behind an access code (`FF_ACCESS_CODE`) and a per-visitor cap (`FF_AI_PER_HOUR`, default 20). Without a code set, they stay off. |
+| Plan AI, parts from a link | Yes | Visitors either enter the site's access code (`FF_ACCESS_CODE`, capped per visitor by `FF_AI_PER_HOUR`, default 20), or use their own Anthropic API key (Project menu ▸ Claude API key). An own key is checked with Anthropic, then kept in an encrypted httpOnly cookie; it is never stored on the server and requests run on the visitor's account (`FF_OWN_KEY_PER_HOUR`, default 120). Without an access code set, only own keys work. |
 | GitHub | Yes | Personal access token, kept in an AES-GCM encrypted httpOnly cookie (`FF_SESSION_SECRET`). Device sign-in also works if `GITHUB_CLIENT_ID` is set. |
 | Arduino compile | No | Falls back to the precompiled example or an uploaded `.hex`. MicroPython and Python boards run fully in the browser. |
 | Blender link, Claude Code terminal | No | They run programs on the machine hosting the server, so they're hidden on the hosted build. |

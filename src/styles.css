@@ -854,3 +854,12 @@ dialog.ffcode p{font-size:14px;color:var(--text2);margin:0 0 16px;line-height:1.
 dialog.ffcode input{width:100%;box-sizing:border-box;height:44px;padding:0 14px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--text);font:inherit}
 dialog.ffcode input:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:transparent}
 dialog.ffcode .acts{display:flex;justify-content:flex-end;gap:8px;margin-top:20px}
+dialog.ffcode a{color:var(--accent)}
+dialog.ffcode .ffsmall{font-size:12px;color:var(--dim);margin:8px 0 0}
+dialog.ffcode .fferr{color:var(--bad,#b3261e);font-size:13px;margin:8px 0 0;min-height:0}
+dialog.ffcode .fferr:empty{display:none}
+dialog.ffcode .fftabs{display:flex;gap:4px;padding:4px;background:var(--bg);border-radius:999px;margin:0 0 14px}
+dialog.ffcode .fftabs button{flex:1;border:0;background:none;padding:8px 10px;border-radius:999px;font:inherit;font-size:13px;font-weight:500;color:var(--text2);cursor:pointer}
+dialog.ffcode .fftabs button.on{background:var(--sel);color:var(--text)}
+dialog.ffcode .ffkey{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 8px 8px 14px;background:var(--bg);border-radius:12px;margin:0 0 14px;font-size:13px}
+dialog.ffcode .ffkey code{font-family:'JetBrains Mono',monospace;font-size:12px}

@@ -47,15 +47,37 @@ function partApi(): Plugin {
         req.on('end', async () => {
           res.setHeader('content-type', 'application/json');
           try {
-            const stop = (await import('./server/guard.mjs')).guardAI(req.headers);
-            if (stop) { res.statusCode = stop.status; return res.end(JSON.stringify(stop.body)); }
+            const a = (await import('./server/guard.mjs')).aiAccess(req.headers);
+            if (a.stop) { res.statusCode = a.stop.status; return res.end(JSON.stringify(a.stop.body)); }
             const { partFromUrl } = await import('./server/part-from-url.mjs');
             const { url } = JSON.parse(body);
-            res.end(JSON.stringify(await partFromUrl(String(url ?? '').trim())));
+            res.end(JSON.stringify(await partFromUrl(String(url ?? '').trim(), a.apiKey)));
           } catch (e: any) {
             res.statusCode = 400;
             res.end(JSON.stringify({ error: e.message }));
           }
+        });
+      });
+    },
+  };
+}
+
+/** Dev-server API: /api/ai-key, a visitor's own Anthropic key in an encrypted cookie (server/aikey.mjs). */
+function aiKeyApi(): Plugin {
+  return {
+    name: 'formframe-ai-key',
+    configureServer(server) {
+      server.middlewares.use('/api/ai-key', (req, res) => {
+        let body = '';
+        req.on('data', c => { body += c; if (body.length > 1e4) req.destroy(); });
+        req.on('end', async () => {
+          const { aiKeyRoute } = await import('./server/aikey.mjs');
+          let parsed: any = {};
+          try { parsed = body ? JSON.parse(body) : {}; } catch { res.statusCode = 400; return res.end(JSON.stringify({ error: 'Bad JSON' })); }
+          const r = await aiKeyRoute({ method: req.method, body: parsed, cookie: req.headers.cookie, contentType: req.headers['content-type'], secure: false });
+          res.setHeader('content-type', 'application/json'); res.setHeader('cache-control', 'no-store');
+          if (r.cookie) res.setHeader('set-cookie', r.cookie);
+          res.statusCode = r.status; res.end(JSON.stringify(r.json));
         });
       });
     },
@@ -74,10 +96,10 @@ function planApi(): Plugin {
         req.on('end', async () => {
           res.setHeader('content-type', 'application/json');
           try {
-            const stop = (await import('./server/guard.mjs')).guardAI(req.headers);
-            if (stop) { res.statusCode = stop.status; return res.end(JSON.stringify(stop.body)); }
+            const a = (await import('./server/guard.mjs')).aiAccess(req.headers);
+            if (a.stop) { res.statusCode = a.stop.status; return res.end(JSON.stringify(a.stop.body)); }
             const { planWithAI } = await import('./server/plan-ai.mjs');
-            res.end(JSON.stringify(await planWithAI(JSON.parse(body).context)));
+            res.end(JSON.stringify(await planWithAI(JSON.parse(body).context, a.apiKey)));
           } catch (e: any) { res.statusCode = 400; res.end(JSON.stringify({ error: e.message })); }
         });
       });
@@ -93,7 +115,7 @@ export default defineConfig(({ mode }) => {
   base: './',
   // built on Vercel: no local-machine features (Blender link, Claude Code terminal, Arduino compiler)
   define: { __FF_HOSTED__: JSON.stringify(!!process.env.VERCEL) },
-  plugins: [compileApi(), partApi(), planApi(), { name: 'formframe-blender-link', configureServer: blenderApi }, { name: 'formframe-github', configureServer: githubApi }, { name: 'formframe-claude-code', configureServer: claudeTermApi }],
+  plugins: [compileApi(), partApi(), planApi(), aiKeyApi(), { name: 'formframe-blender-link', configureServer: blenderApi }, { name: 'formframe-github', configureServer: githubApi }, { name: 'formframe-claude-code', configureServer: claudeTermApi }],
   build: {
     target: 'es2022', chunkSizeWarningLimit: 2000,
     rollupOptions: { input: { studio: fileURLToPath(new URL('./index.html', import.meta.url)), modeler: fileURLToPath(new URL('./modeler.html', import.meta.url)), device: fileURLToPath(new URL('./device.html', import.meta.url)) } },

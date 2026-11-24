@@ -9,6 +9,7 @@
   "functions": {
     "api/plan.mjs": { "maxDuration": 300 },
     "api/part-from-url.mjs": { "maxDuration": 120 },
-    "api/github.mjs": { "maxDuration": 30 }
+    "api/github.mjs": { "maxDuration": 30 },
+    "api/ai-key.mjs": { "maxDuration": 30 }
   }
 }

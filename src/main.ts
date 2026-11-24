@@ -1,5 +1,6 @@
 import './styles.css';
 import * as THREE from 'three';
+import { manageAiKey, setAccessBase } from './app/access';
 import { HOSTED } from './hosted';
 import { Viewport } from './scene/viewport';
 import { ParametricProduct } from './scene/parametric';
@@ -75,6 +76,7 @@ class FormframeApp implements App {
   private lastThumb = 0;
 
   constructor() {
+    setAccessBase(BASE);
     document.body.classList.toggle('hosted', HOSTED);
     this.project = blankProject();
     this.viewport = new Viewport($('#viewport'));
@@ -514,6 +516,7 @@ class FormframeApp implements App {
       if (a === 'home') this.goHome();
       if (a === 'newBlank') this.createProject(blankProject(this.project.electronics.board), 'Blank project');
       if (a === 'newExample') this.createProject(defaultProject(), 'The First Step');
+      if (a === 'aikey') manageAiKey().then(r => { if (r === 'key') toast('Your Anthropic key is saved. AI features now use your account.'); }).catch(e => toast(e.message));
       if (a === 'coach') showCoach();
       if (a === 'tour') startTour();
       if (a === 'open') $('#fileProject').click();

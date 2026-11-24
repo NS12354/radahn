@@ -5,9 +5,8 @@
 // encrypted, httpOnly cookie (AES-256-GCM) and every GitHub call goes through
 // here. Nothing is stored on the server, so this works the same on the local
 // dev server and on a serverless host (Vercel), where each request may land on
-// a fresh instance. The key comes from FF_SESSION_SECRET; without one (local
-// dev only) a random key is made per server start, which signs you out on restart.
-import crypto from 'node:crypto';
+// a fresh instance (see seal.mjs for the encryption key).
+import { sealKey, readCookie, cookieValue } from './seal.mjs';
 
 const API = 'https://api.github.com';
 const COOKIE = 'ff_gh';
@@ -15,32 +14,9 @@ const SCOPES = 'repo read:user';
 const MAX_FILE = 1_000_000;
 const MAX_AGE = 30 * 24 * 3600; // seconds
 
-let devKey = null;
-function key() {
-  const secret = process.env.FF_SESSION_SECRET;
-  if (secret) return crypto.createHash('sha256').update(secret).digest();
-  if (process.env.VERCEL) throw Object.assign(new Error('GitHub sign-in is not set up on this site (FF_SESSION_SECRET is missing).'), { status: 503 });
-  return (devKey ??= crypto.randomBytes(32));
-}
-function seal(obj) {
-  const iv = crypto.randomBytes(12), c = crypto.createCipheriv('aes-256-gcm', key(), iv);
-  const ct = Buffer.concat([c.update(JSON.stringify(obj), 'utf8'), c.final()]);
-  return Buffer.concat([iv, c.getAuthTag(), ct]).toString('base64url');
-}
-function open(raw) {
-  try {
-    const b = Buffer.from(raw, 'base64url'); if (b.length < 29) return {};
-    const d = crypto.createDecipheriv('aes-256-gcm', key(), b.subarray(0, 12)); d.setAuthTag(b.subarray(12, 28));
-    return JSON.parse(Buffer.concat([d.update(b.subarray(28)), d.final()]).toString('utf8'));
-  } catch (e) { if (e.status) throw e; return {}; } // tampered, old key, or garbage: treat as signed out
-}
-function readSession(cookieHeader) {
-  const m = String(cookieHeader ?? '').match(new RegExp(`(?:^|;\\s*)${COOKIE}=([A-Za-z0-9_-]+)`));
-  return m ? open(m[1]) : {};
-}
+function readSession(cookieHeader) { return readCookie(cookieHeader, COOKIE); }
 function sessionCookie(s, secure) {
-  const empty = !s.token && !s.device;
-  return `${COOKIE}=${empty ? '' : seal(s)}; HttpOnly; SameSite=Lax; Path=/api/github; Max-Age=${empty ? 0 : MAX_AGE}${secure ? '; Secure' : ''}`;
+  return cookieValue(COOKIE, s.token || s.device ? s : null, { path: '/api/github', maxAge: MAX_AGE, secure });
 }
 
 const clientId = () => process.env.GITHUB_CLIENT_ID || '';
@@ -70,7 +46,7 @@ export async function githubRoute({ method, route, q, body, cookie, contentType,
   const send = (code, obj) => { status = code; json = obj; };
   const save = (next) => { s = next; changed = true; };
   try {
-    key(); // fails clearly when a hosted site has no FF_SESSION_SECRET
+    sealKey(); // fails clearly when a hosted site has no FF_SESSION_SECRET
     s = readSession(cookie);
     if (method === 'POST' && !String(contentType ?? '').startsWith('application/json')) send(415, { error: 'JSON only' }); // blocks cross-site form posts
     else await handle();
