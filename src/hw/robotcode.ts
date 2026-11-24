@@ -310,11 +310,11 @@ while True:
         arm.play(POSES)
         continue
     arm.move_to(-120, 110, 150)          # above the blue block (robot's right)
-    arm.move_to(-120, 40, 150)           # down
+    arm.move_to(-120, 12, 150)           # down: fingers around the 20 mm block
     arm.grip(True)
     arm.move_to(-120, 110, 150)          # lift
     arm.move_to(120, 110, 150)           # swing over to the green pad
-    arm.move_to(120, 45, 150)            # put it down
+    arm.move_to(120, 16, 150)            # down onto the 4 mm pad
     arm.grip(False)
     arm.move_to(120, 110, 150)
     arm.home()

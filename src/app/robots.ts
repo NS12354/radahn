@@ -56,9 +56,22 @@ function arm(board: BoardDef) {
   add('Gripper servo', 'box', [23, 22, 12], [0, 335, -17], { rot: [90, 0, 0], parent: hand.id, detail: 'servo:sg90' });
   add('Gripper finger L', 'box', [6, 36, 14], [17, 358, 0], { color: GREY, parent: hand.id, detail: 'finger', joint: joint('prismatic', [17, 358, 0], [-1, 0, 0], { min: 0, max: 12, drive: drive(4) }) });
   add('Gripper finger R', 'box', [6, 36, 14], [-17, 358, 0], { color: GREY, parent: hand.id, detail: 'finger', joint: joint('prismatic', [-17, 358, 0], [1, 0, 0], { min: 0, max: 12, drive: drive(4) }) });
-  // blocks to pick up (visual)
-  const world: World = { size: 700, obstacles: [{ shape: 'box', pos: [-120, 150], size: [30, 30, 30], color: '#3aa0ff' }, { shape: 'cyl', pos: [120, 150], size: [60, 4, 60], color: '#33c27f' }] };
-  return { parts, comps: [pca, bec], spec: { kind: 'arm', mobile: 'fixed', mass: 600, world } as RobotSpec, name: 'Robot arm' };
+  return { parts, comps: [pca, bec], spec: { kind: 'arm', mobile: 'fixed', mass: 600, world: armTable() } as RobotSpec, name: 'Robot arm' };
+}
+
+/** Where the arm demo picks up (robot's right) and puts down (left), XZ in mm. Matches main.py. */
+export const ARM_PICK: [number, number] = [-120, 150];
+export const ARM_PLACE: [number, number] = [120, 150];
+/**
+ * A block the gripper can hold: 20 mm fits between the open fingers (about 27 mm apart),
+ * turned to face the base so the fingers close square on it.
+ */
+export function pickBlock(pos: [number, number] = ARM_PICK, color = '#3aa0ff'): World['obstacles'][number] {
+  return { shape: 'box', pos, size: [20, 20, 20], rot: Math.round(Math.atan2(pos[0], pos[1]) * 180 / Math.PI), color, pick: true, name: 'Block' };
+}
+/** The arm's table: a block to pick up and a green pad to put it on. */
+export function armTable(): World {
+  return { size: 700, obstacles: [pickBlock(), { shape: 'cyl', pos: ARM_PLACE, size: [60, 4, 60], color: '#33c27f', name: 'Pad' }] };
 }
 
 // ------------------------------------------------------------------ rover
@@ -99,7 +112,7 @@ function rover(board: BoardDef, mode: 'avoid' | 'line') {
     world = { size: 2000, obstacles: [], track: { points: pts, width: 26 } };
   }
   // start on the track, facing along it
-  return { parts, comps, spec: { kind: 'rover', mobile: 'wheels', mass: 450, world } as RobotSpec, name: mode === 'avoid' ? 'Obstacle-avoiding rover' : 'Line follower' };
+  return { parts, comps, spec: { kind: 'rover', mobile: 'wheels', mass: 450, world, physics: true } as RobotSpec, name: mode === 'avoid' ? 'Obstacle-avoiding rover' : 'Line follower' };
 }
 
 // ------------------------------------------------------------------ legs
@@ -125,7 +138,7 @@ function dog(board: BoardDef) {
     const low = add(`${nm} lower leg`, 'rbox', [12, 78, 16], [x1, H - 120 + 4, z], { param: 4, color: DARK, parent: up.id, detail: 'link', joint: joint('revolute', [x1, H - 80, z], [1, 0, 0], { min: -10, max: 150, drive: d(2) }) });
     add(`${nm} foot`, 'sphere', [18, 14, 18], [x1, 7, z], { color: '#1d1f23', finish: 'soft', parent: low.id, foot: true, detail: 'foot' });
   });
-  return { parts, comps: [pca, imu, bec], spec: { kind: 'legs', mobile: 'legs', mass: 1300, world: { size: 3000, obstacles: [] } } as RobotSpec, name: 'Robot dog' };
+  return { parts, comps: [pca, imu, bec], spec: { kind: 'legs', mobile: 'legs', mass: 1300, world: { size: 3000, obstacles: [] }, physics: true } as RobotSpec, name: 'Robot dog' };
 }
 
 function hexapod(board: BoardDef) {
@@ -153,7 +166,7 @@ function hexapod(board: BoardDef) {
     const tibia = add(`${nm} tibia`, 'rbox', [12, T - 10, 14], [xt, H - (T - 10) / 2, z], { param: 4, color: DARK, parent: femur.id, detail: 'link', joint: joint('revolute', [xt, H, z], [0, 0, 1], { min: -70, max: 70, drive: d(2, side < 0) }) });
     add(`${nm} foot`, 'sphere', [14, 12, 14], [xt, 6, z], { color: '#1d1f23', finish: 'soft', parent: tibia.id, foot: true, detail: 'foot' });
   });
-  return { parts, comps: [L, R, bec], spec: { kind: 'legs', mobile: 'legs', mass: 1600, world: { size: 3000, obstacles: [] } } as RobotSpec, name: 'Hexapod' };
+  return { parts, comps: [L, R, bec], spec: { kind: 'legs', mobile: 'legs', mass: 1600, world: { size: 3000, obstacles: [] }, physics: true } as RobotSpec, name: 'Hexapod' };
 }
 
 // ------------------------------------------------------------------ pins

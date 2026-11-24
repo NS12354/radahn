@@ -18,6 +18,30 @@ test('robot arm: the firmware drives the joints through the PCA9685 (real MicroP
   expect(errs).toEqual([]);
 });
 
+test('robot arm: the firmware picks up the block and sets it on the pad; the block can be removed', async ({ page }) => {
+  test.setTimeout(180_000);
+  const errs = errors(page);
+  await home(page);
+  await page.click('#hRobots button[data-k="arm"]');
+  await page.waitForFunction(() => !!(window as any).formframe?.projectId);
+  const block = () => page.evaluate(() => { const s = (globalThis as any).__robot?.(); const o = s?.objects[0]; return o ? { x: o.m.elements[12], y: o.m.elements[13], z: o.m.elements[14], held: !!o.held } : null; });
+  await mode(page, 'elec');
+  await page.click('#bRun');
+  await expect.poll(async () => (await block())?.held, { timeout: 120_000 }).toBe(true);
+  await expect.poll(async () => { const b = await block(); return !!b && !b.held && b.x > 100; }, { timeout: 120_000 }).toBe(true);
+  const b = (await block())!;
+  expect(Math.abs(b.y - 14)).toBeLessThan(1.5); // resting on the 4 mm pad
+  await page.screenshot({ path: 'test-results/arm-placed.png' });
+  await page.click('#bRun'); // stop
+  await page.locator('#robotPanel .rpobj', { hasText: 'Block' }).locator('.rpdel').click();
+  await expect(page.locator('#robotPanel .rpobj')).toHaveCount(1);
+  expect(await page.evaluate(() => (window as any).formframe.project.product.built.robot.world.obstacles.some((o: any) => o.pick))).toBe(false);
+  expect(await block()).toBeNull();
+  await page.click('#rpAddBlock');
+  await expect(page.locator('#robotPanel .rpobj', { hasText: 'Block' })).toHaveCount(1);
+  expect(errs).toEqual([]);
+});
+
 test('line follower drives itself along the track', async ({ page }) => {
   await home(page);
   await page.click('#hRobots button[data-k="rover-line"]');

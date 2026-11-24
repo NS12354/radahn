@@ -54,6 +54,44 @@ describe('robot arm', () => {
     expect(sh.q).toBeCloseTo(60, 0);
     expect(sim.joints.find(j => j.name === 'Gripper finger L')!.q).toBeCloseTo(12, 0);
   });
+  itPy('the demo picks the block up on the right and puts it down on the pad', () => {
+    // the waypoints in main.py, as servo angles from the firmware's own IK
+    const main = robotProject('arm').electronics.files['main.py'];
+    const moves = [...main.matchAll(/arm\.move_to\(([-\d]+), ([-\d]+), ([-\d]+)\)|arm\.grip\((True|False)\)/g)].map(m => (m[4] ? m[4] === 'True' : [+m[1], +m[2], +m[3]]));
+    const ik: (number[] | boolean)[] = py(`import json, time\ntime.sleep = lambda s: None\nfrom arm import Arm\nclass S:\n    def angle(self, ch, a): pass\na = Arm(S())\nprint(json.dumps([m if isinstance(m, bool) else a.ik(*m) for m in ${JSON.stringify(moves).replace(/true/g, 'True').replace(/false/g, 'False')}]))`);
+    const p = robotProject('arm'), m = p.product.built!, comps = p.electronics.comps;
+    const sim = new RobotSim(m), { st, bench } = fakeBench(comps), ch = st.get(comps.find(c => c.type === 'pca9685')!.uid).ch;
+    const block = () => new THREE.Vector3().setFromMatrixPosition(sim.objects[0].m);
+    const run = (s: number) => { for (let t = 0; t < s; t += 1 / 60) sim.step(1 / 60, comps, bench, true); };
+    ch[4].angle = 10; // open, as main.py starts
+    let held = false;
+    for (const step of ik.slice(1)) { // after the first grip(False)
+      if (typeof step === 'boolean') { ch[4].angle = step ? 170 : 10; run(0.5); if (step) { held = sim.holding; expect(held, 'gripped the block').toBe(true); } continue; }
+      step.forEach((q, i) => (ch[i].angle = 90 + q)); run(2.5);
+      if (held && sim.holding) expect(block().y, 'carried').toBeGreaterThan(10);
+    }
+    // fingers stopped at the block's faces (20 mm apart) instead of closing to 5 mm
+    run(1);
+    const b = block();
+    expect(sim.holding).toBe(false);
+    expect(Math.hypot(b.x - 120, b.z - 150)).toBeLessThan(4);
+    expect(b.y).toBeCloseTo(4 + 10, 0); // on top of the 4 mm pad
+  });
+  it('fingers stop on the block and it rides with the hand', () => {
+    const p = robotProject('arm'), m = p.product.built!, comps = p.electronics.comps;
+    const sim = new RobotSim(m);
+    // put the block straight between the fingers at rest (hand pointing up, tip at y 370)
+    sim.objects[0].m.makeTranslation(0, 355, 0);
+    const fl = sim.joints.find(j => j.name === 'Gripper finger L')!, fr = sim.joints.find(j => j.name === 'Gripper finger R')!;
+    sim.manual.set(fl.id, 12); sim.manual.set(fr.id, 12);
+    for (let i = 0; i < 30; i++) sim.step(1 / 60, comps, fakeBench(comps).bench, false);
+    expect(fl.q).toBeCloseTo(4, 0); expect(fr.q).toBeCloseTo(4, 0); // 28 mm gap − 2×4 = 20 mm block
+    expect(sim.holding).toBe(true);
+    sim.manual.set(fl.id, 0); sim.manual.set(fr.id, 0);
+    for (let i = 0; i < 60; i++) sim.step(1 / 60, comps, fakeBench(comps).bench, false);
+    expect(sim.holding).toBe(false);
+    expect(new THREE.Vector3().setFromMatrixPosition(sim.objects[0].m).y).toBeCloseTo(10, 0); // fell to the floor
+  });
 });
 
 describe('rover', () => {

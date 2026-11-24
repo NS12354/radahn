@@ -95,7 +95,8 @@ export interface Joint {
 /** A robot's surroundings: a floor, things to bump into and a line to follow (mm, Y up). */
 export interface World {
   size: number;
-  obstacles: { shape: 'box' | 'cyl'; pos: [number, number]; size: [number, number, number]; color?: string }[];
+  /** pos: XZ centre (mm); size: [width, height, depth]; rot: yaw (degrees about Y); pick: a gripper can pick it up. */
+  obstacles: { shape: 'box' | 'cyl'; pos: [number, number]; size: [number, number, number]; color?: string; rot?: number; pick?: boolean; name?: string }[];
   /** A dark line on the floor (closed loop through these XZ points). */
   track?: { points: [number, number][]; width: number };
 }
@@ -106,6 +107,8 @@ export interface RobotSpec {
   /** Total mass in grams (legs: load on the servos). */
   mass: number;
   world?: World;
+  /** Rigid-body physics (gravity, torque limits, friction) instead of the simple motion model. */
+  physics?: boolean;
   /** Poses recorded in teach mode: joint part id → value. */
   poses?: { name: string; joints: Record<string, number> }[];
 }

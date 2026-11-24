@@ -112,6 +112,8 @@ export class BuiltProduct extends Product {
   private pose: Map<string, THREE.Matrix4> | null = null;
   private worldG = new THREE.Group();
   private worldKey = '';
+  /** Meshes of the blocks a gripper can pick up, by obstacle index (posed by the robot sim). */
+  private pickMeshes = new Map<number, THREE.Mesh>();
 
   /** A dragged root's transform back in rest space (strips the robot pose), so edits don't bake the pose in. */
   restTransform(root: THREE.Object3D): { pos: THREE.Vector3; quat: THREE.Quaternion } {
@@ -130,6 +132,7 @@ export class BuiltProduct extends Product {
     this.worldKey = key;
     this.worldG.traverse((o: any) => { o.geometry?.dispose(); o.material?.dispose?.(); });
     this.worldG.clear();
+    this.pickMeshes.clear();
     if (!w) { this.mm.remove(this.worldG); return; }
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(w.size, w.size), new THREE.MeshPhysicalMaterial({ color: 0x9d9a94, roughness: 0.85, clearcoat: 0.05 }));
     floor.rotation.x = -Math.PI / 2; floor.position.y = -0.2; floor.receiveShadow = true;
@@ -147,13 +150,19 @@ export class BuiltProduct extends Product {
         this.worldG.add(seg);
       }
     }
-    for (const o of w.obstacles) {
+    w.obstacles.forEach((o, i) => {
       const m = new THREE.Mesh(o.shape === 'cyl' ? new THREE.CylinderGeometry(o.size[0] / 2, o.size[0] / 2, o.size[1], 32) : new THREE.BoxGeometry(o.size[0], o.size[1], o.size[2]), new THREE.MeshStandardMaterial({ color: new THREE.Color(o.color ?? '#c8743a'), roughness: 0.7 }));
-      m.position.set(o.pos[0], o.size[1] / 2, o.pos[1]); m.castShadow = true;
+      m.position.set(o.pos[0], o.size[1] / 2, o.pos[1]); m.rotation.y = (o.rot ?? 0) * Math.PI / 180; m.castShadow = true;
+      if (o.pick) this.pickMeshes.set(i, m);
       this.worldG.add(m);
-    }
+    });
     this.worldG.traverse((o: any) => { o.userData.world = true; if (o.isMesh) { o.receiveShadow = true; o.castShadow = !(o.geometry instanceof THREE.PlaneGeometry); } });
     this.mm.add(this.worldG);
+  }
+
+  /** Move the pickable blocks to where the robot sim has them (world mm). */
+  setObjects(poses: Map<number, THREE.Matrix4>) {
+    for (const [i, m] of poses) { const mesh = this.pickMeshes.get(i); if (mesh) m.decompose(mesh.position, mesh.quaternion, mesh.scale); }
   }
 
   constructor(public model: BuiltModel, private displays: string[] = []) {

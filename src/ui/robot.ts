@@ -15,6 +15,7 @@ import { COMPONENTS } from '../hw/library/components';
 import type { BuiltModel, World } from '../app/project';
 import { defaultAutoOpts } from '../app/project';
 import { track } from './track';
+import { ARM_PICK, armTable, pickBlock } from '../app/robots';
 
 let A: App;
 let sim: RobotSim | null = null;
@@ -29,9 +30,11 @@ const WORLDS: Record<string, { label: string; make: () => World | undefined }> =
   floor: { label: 'Open floor', make: () => ({ size: 3000, obstacles: [] }) },
   room: { label: 'Room with obstacles', make: () => ({ size: 2200, obstacles: [{ shape: 'box', pos: [0, 600], size: [400, 120, 120] }, { shape: 'cyl', pos: [-550, -200], size: [180, 200, 180], color: '#3aa0ff' }, { shape: 'box', pos: [600, -300], size: [160, 150, 360], color: '#33c27f' }, { shape: 'box', pos: [-450, 650], size: [200, 100, 200], color: '#e5c07b' }, { shape: 'cyl', pos: [350, 250], size: [120, 160, 120], color: '#c678dd' }] }) },
   track: { label: 'Line track', make: () => { const pts: [number, number][] = []; for (let i = 0; i < 48; i++) { const a = (i / 48) * Math.PI * 2; pts.push([Math.round(Math.cos(a) * 420 - 420), Math.round(Math.sin(a) * 650 + Math.sin(a * 2) * 120)]); } return { size: 2000, obstacles: [], track: { points: pts, width: 26 } }; } },
-  table: { label: 'Table with blocks', make: () => ({ size: 700, obstacles: [{ shape: 'box', pos: [-120, 150], size: [30, 30, 30], color: '#3aa0ff' }, { shape: 'cyl', pos: [120, 150], size: [60, 4, 60], color: '#33c27f' }] }) },
+  table: { label: 'Table with blocks', make: armTable },
 };
 const worldKind = (w?: World) => (!w ? 'none' : w.track ? 'track' : w.size === 700 ? 'table' : w.obstacles.length ? 'room' : 'floor');
+
+const objName = (o: World['obstacles'][number]) => o.name ?? (o.shape === 'cyl' ? 'Cylinder' : 'Box');
 
 const model = (): BuiltModel | null => (A.product instanceof BuiltProduct ? A.project.product.built ?? null : null);
 
@@ -54,6 +57,7 @@ export function robotFrame(dt: number) {
   sim.step(dt, A.project.electronics.comps, A.bench, firmwareRunning());
   prod.setPose(sim.pose);
   prod.setWorld(m.robot?.world);
+  prod.setObjects(sim.objectPoses());
   A.viewport.showFloor(!m.robot?.world);
   uiT += dt; if (uiT > 0.1) { uiT = 0; live(); }
 }
@@ -84,6 +88,7 @@ function render() {
       <div class="rpposes">${(sp.poses ?? []).map((p, i) => `<span class="rppose" data-i="${i}" title="Click to go to it">${esc(p.name)}</span>`).join('') || '<span class="dim">No poses yet (teach mode: move the sliders, then Record)</span>'}</div>
       <div class="rprow"><label>World</label><select id="rpWorld">${Object.entries(WORLDS).map(([k, w]) => `<option value="${k}" ${k === worldKind(sp.world) ? 'selected' : ''}>${w.label}</option>`).join('')}</select>
         <label>Moves on</label><select id="rpMobile">${[['fixed', 'Bolted down'], ['wheels', 'Wheels'], ['legs', 'Legs']].map(([k, l]) => `<option value="${k}" ${sp.mobile === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+      ${sp.world ? `<div class="rprow rpobjs"><label>Objects</label>${sp.world.obstacles.map((o, i) => `<span class="rpobj" title="${o.pick ? 'The gripper can pick this up' : 'Fixed in place'}"><i style="background:${esc(o.color ?? '#c8743a')}"></i>${esc(objName(o))}<button class="rpdel" data-i="${i}" title="Remove ${esc(objName(o).toLowerCase())}" aria-label="Remove ${esc(objName(o).toLowerCase())}">×</button></span>`).join('') || '<span class="dim">None</span>'}<button class="btn" id="rpAddBlock" title="Add a 20 mm block the gripper can pick up">+ Block</button></div>` : ''}
       <div class="rprow"><label>Mass</label><input type="number" id="rpMass" value="${sp.mass}" min="10" step="50"> g
         ${becs.length ? `<label>Servo supply</label><input type="number" id="rpAmps" value="${becs[0].props?.amps ?? 5}" min="1" step="1"> A` : ''}</div>
       <div class="rpbtns"><button class="btn" id="rpReset">↺ Reset position</button><button class="btn" id="rpUrdf">Export URDF</button><button class="btn" id="rpImp">Import URDF…</button></div>
@@ -106,6 +111,18 @@ function render() {
   $('#rpIns').onclick = () => insertPoses();
   panel.querySelectorAll<HTMLElement>('.rppose').forEach(e => (e.onclick = () => { const p = sp.poses![+e.dataset.i!]; for (const [id, q] of Object.entries(p.joints)) sim!.manual.set(id, q); }));
   $('#rpWorld').onchange = e => { sp.world = WORLDS[(e.target as HTMLSelectElement).value].make(); sim!.reset(); A.changed('product'); track('model', `Robot world: ${WORLDS[(e.target as HTMLSelectElement).value].label}`); };
+  panel.querySelectorAll<HTMLElement>('.rpdel').forEach(b => (b.onclick = () => {
+    const obs = sp.world!.obstacles, [o] = obs.splice(+b.dataset.i!, 1);
+    A.changed('product'); render(); toast(`Removed the ${objName(o).toLowerCase()}`); track('model', `Robot world: removed the ${objName(o).toLowerCase()}`);
+  }));
+  $('#rpAddBlock').onclick = () => {
+    const obs = sp.world!.obstacles, taken = (x: number, z: number) => obs.some(o => Math.hypot(o.pos[0] - x, o.pos[1] - z) < 30);
+    // the arm's pick spot first (where main.py reaches for it), else the next free spot along the table
+    const spots: [number, number][] = sp.kind === 'arm' ? [ARM_PICK, [-60, 180], [0, 200], [60, 180]] : [[0, 200], [-80, 200], [80, 200]];
+    const at = spots.find(([x, z]) => !taken(x, z)) ?? [spots[0][0], spots[0][1] + 40 * obs.length];
+    obs.push(pickBlock(at as [number, number]));
+    A.changed('product'); render(); track('model', 'Robot world: added a block');
+  };
   $('#rpMobile').onchange = e => { sp.mobile = (e.target as HTMLSelectElement).value as any; sim!.reset(); A.changed('product'); };
   $('#rpMass').onchange = e => { sp.mass = Math.max(10, +(e.target as HTMLInputElement).value); A.changed('product'); };
   if (becs.length) $('#rpAmps').onchange = e => { becs[0].props = { ...becs[0].props, amps: Math.max(1, +(e.target as HTMLInputElement).value) }; A.changed('electronics'); };

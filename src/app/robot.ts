@@ -9,12 +9,16 @@
  *     legs whose servos can't hold the body sag;
  *  3. mobility: wheels drive the body (differential drive), legs walk it (contact model);
  *  4. sensors: ultrasonic / IR distance by raycasting the world, line sensors
- *     read the floor, the IMU reads the body's tilt, encoders count wheel turns.
+ *     read the floor, the IMU reads the body's tilt, encoders count wheel turns;
+ *  5. grippers: two fingers on one actuator stop at a pickable block between
+ *     them, and while both press on it the block moves with the hand. Opened,
+ *     it falls onto whatever is below.
  */
 import * as THREE from 'three';
 import type { BuiltPart, BuiltModel, Joint, World } from './project';
 import { BodyPose, LegContact, clampJoint, diffDrive, driveBody, footRest, forwardKinematics, onTrack, raycastWorld, restMatrix, sensorRay, wheelsOf } from './kinematics';
 import { COMPONENTS, SERVO_TYPES } from '../hw/library/components';
+import { Physics, loadPhysics, physicsReady } from './physics';
 import type { CompInstance, DeviceModel } from '../hw/types';
 
 /** What the simulator needs from the bench. */
@@ -24,6 +28,11 @@ const SERVOS = new Set(['servo', 'mg996r']);
 const MOTORS = new Set(['motor', 'fan', 'pump', 'contservo', 'tb6612', 'l298n']);
 /** Output shaft speed at full drive (deg/s): ~200 RPM gear motor, ~130 RPM continuous servo. */
 const MOTOR_DPS: Record<string, number> = { contservo: 780, default: 1200 };
+
+/** Two prismatic fingers driven by the same actuator, on the same parent. */
+interface Gripper { a: BuiltPart; b: BuiltPart; parent: string }
+/** A pickable block in the world: pose in world mm, and the hand holding it (pose relative to the hand). */
+export interface WorldObject { index: number; size: THREE.Vector3; shape: 'box' | 'cyl'; m: THREE.Matrix4; vy: number; held?: { by: string; rel: THREE.Matrix4 } }
 
 export interface JointState { id: string; name: string; joint: Joint; q: number; target: number; driven: boolean; sag: number; torque?: number; load?: number }
 
@@ -40,7 +49,16 @@ export class RobotSim {
   stalled = false;
   /** ROS /cmd_vel (mm/s, rad/s): drives a wheeled robot while no firmware is running. */
   cmdVel: { v: number; w: number; t: number } | null = null;
+  /** Pickable blocks (world obstacles with pick: true). */
+  objects: WorldObject[] = [];
+  private objSig = '';
+  private grippers: Gripper[] = [];
   private wheelDeg = new Map<string, number>();
+  /** Rigid-body physics, when on (spec.physics) and loaded. */
+  phys: Physics | null = null;
+  /** Servo commands after slew (what the firmware asked for), separate from the measured q under physics. */
+  private cmd = new Map<string, number>();
+  private comps: CompInstance[] = [];
   private lastImu = { p: 0, r: 0 };
 
   constructor(public model: BuiltModel) { this.resync(); }
@@ -50,14 +68,52 @@ export class RobotSim {
     const parts = this.model.parts;
     this.joints = parts.filter(p => p.joint && p.joint.type !== 'fixed').map(p => ({ id: p.id, name: p.name, joint: p.joint!, q: this.q.get(p.id) ?? 0, target: this.manual.get(p.id) ?? 0, driven: false, sag: 0 }));
     for (const id of [...this.q.keys()]) if (!this.joints.some(j => j.id === id)) this.q.delete(id);
+    this.grippers = findGrippers(parts);
+    this.syncObjects();
     this.solve();
   }
+  /** Put the pickable blocks where the world says (when the world changed, or on reset). */
+  private syncObjects(force = false) {
+    const obs = this.spec?.world?.obstacles ?? [];
+    const sig = JSON.stringify(obs);
+    if (!force && sig === this.objSig) return;
+    this.objSig = sig;
+    this.objects = obs.flatMap((o, index) => {
+      if (!o.pick) return [];
+      const m = new THREE.Matrix4().compose(new THREE.Vector3(o.pos[0], o.size[1] / 2, o.pos[1]), new THREE.Quaternion().setFromAxisAngle(UP, (o.rot ?? 0) * D2R), ONE);
+      return [{ index, shape: o.shape, size: new THREE.Vector3(...o.size), m, vy: 0 }];
+    });
+  }
+  /** World pose of each pickable block, by obstacle index (for drawing). */
+  objectPoses() { return new Map(this.objects.map(o => [o.index, o.m])); }
+  /** Is a gripper holding something? */
+  get holding() { return this.objects.some(o => o.held); }
   reset() {
     this.q.clear(); this.manual.clear(); this.wheelDeg.clear(); this.body.reset(); this.legs.reset(); this.stalled = false;
     for (const j of this.joints) { j.q = 0; j.target = 0; j.sag = 0; }
+    this.syncObjects(true);
+    this.cmd.clear();
     this.settle();
+    this.rebuildPhysics();
   }
   get spec() { return this.model.robot; }
+
+  /** Switch rigid-body physics on (loads the engine) or off. Starts from the current pose. */
+  async setPhysics(on: boolean, comps: CompInstance[] = this.comps) {
+    this.phys?.dispose(); this.phys = null;
+    if (!on || !this.spec) return;
+    await loadPhysics();
+    this.comps = comps;
+    this.solve();
+    this.phys = this.makePhysics();
+  }
+  private makePhysics() {
+    const p = new Physics(this.model, this.pose, j => (j.drive ? this.servoOf(j, this.comps).torque : 0));
+    for (const js of this.joints) this.cmd.set(js.id, js.q);
+    return p;
+  }
+  /** Rebuild physics from the current pose (after reset or a model edit). */
+  private rebuildPhysics() { if (this.phys && physicsReady()) { this.phys.dispose(); this.phys = this.makePhysics(); } }
 
   /** Joint target from its actuator on the bench, or null if nothing drives it (yet). */
   private target(j: Joint, comps: CompInstance[], bench: BenchLike): { q?: number; rate?: number; speed?: number } | null {
@@ -87,7 +143,10 @@ export class RobotSim {
 
   step(dt: number, comps: CompInstance[], bench: BenchLike, running: boolean) {
     dt = Math.min(dt, 0.05);
+    this.comps = comps;
+    if (this.phys) return this.stepPhysics(dt, comps, bench, running);
     const wheelRates = new Map<string, number>();
+    const before = new Map(this.q);
     for (const js of this.joints) {
       const j = js.joint, t = running ? this.target(j, comps, bench) : null;
       js.driven = !!t;
@@ -108,6 +167,7 @@ export class RobotSim {
     const spec = this.spec;
     if (spec?.mobile === 'legs') this.sag(comps);
     this.solve();
+    if (this.grippers.length && this.objects.length) { this.grip(before); this.solve(); }
     if (spec?.mobile === 'wheels') {
       let { v, w } = diffDrive(wheelsOf(this.model.parts), wheelRates);
       const cv = this.cmdVel;
@@ -122,6 +182,121 @@ export class RobotSim {
       this.legs.step(this.body, this.feet(), this.com(), dt);
       this.solve();
     }
+    this.carry(dt);
+    this.sense(comps, bench, dt);
+  }
+
+  /**
+   * Fingers that close on a block stop at its faces. Worked in the hand's rest space,
+   * where the fingers slide along their joint axes. A finger already inside a block
+   * before this frame (it came down onto it closed) passes through instead.
+   */
+  private grip(before: Map<string, number>) {
+    for (const g of this.grippers) {
+      const key = g.a.id, hand = this.pose.get(g.parent); if (!hand) continue;
+      const inv = hand.clone().invert();
+      const at = (f: BuiltPart, q: number) => new THREE.Vector3(...f.pos).addScaledVector(new THREE.Vector3(...f.joint!.axis).normalize(), q);
+      const qa = this.q.get(g.a.id) ?? 0, qb = this.q.get(g.b.id) ?? 0;
+      let pressing: WorldObject | null = null;
+      for (const o of this.objects) {
+        if (o.held && o.held.by !== key) continue;
+        const rest = o.held ? o.held.rel.clone() : inv.clone().multiply(o.m), c = new THREE.Vector3().setFromMatrixPosition(rest), oq = new THREE.Quaternion().setFromRotationMatrix(rest);
+        const pen = (qa: number, qb: number) => {
+          const ca = at(g.a, qa), cb = at(g.b, qb), dist = ca.distanceTo(cb); if (dist < 1e-6) return null;
+          const u = cb.clone().sub(ca).divideScalar(dist);
+          const ta = halfAlong(g.a, u), tb = halfAlong(g.b, u), w = halfOf(o, u, oq), t = c.clone().sub(ca).dot(u);
+          if (t <= ta || t >= dist - tb) return null; // not between the fingers
+          // the block must overlap the fingers' faces (not just sit on the line between them)
+          const local = c.clone().sub(ca).applyQuaternion(restQuat(g.a).invert()), ul = u.clone().applyQuaternion(restQuat(g.a).invert());
+          const close = Math.abs(ul.x) >= Math.abs(ul.y) && Math.abs(ul.x) >= Math.abs(ul.z) ? 0 : Math.abs(ul.y) >= Math.abs(ul.z) ? 1 : 2;
+          for (let k = 0; k < 3; k++) {
+            if (k === close) continue;
+            const dir = new THREE.Vector3().setComponent(k, 1).applyQuaternion(restQuat(g.a));
+            if (Math.abs(local.getComponent(k)) > g.a.size[k] / 2 + halfOf(o, dir, oq) - 2) return null;
+          }
+          return { a: ta - (t - w), b: t + w - (dist - tb), ua: new THREE.Vector3(...g.a.joint!.axis).normalize().dot(u), ub: -new THREE.Vector3(...g.b.joint!.axis).normalize().dot(u) };
+        };
+        const now = pen(qa, qb); if (!now) { if (o.held) this.release(o); continue; }
+        const was = pen(before.get(g.a.id) ?? qa, before.get(g.b.id) ?? qb);
+        if (!o.held && was && (was.a > 0.5 || was.b > 0.5)) continue; // already inside it: passing through
+        let na = qa, nb = qb;
+        if (now.a > 0 && now.ua > 1e-3) na = Math.max(g.a.joint!.min ?? -Infinity, qa - now.a / now.ua);
+        if (now.b > 0 && now.ub > 1e-3) nb = Math.max(g.b.joint!.min ?? -Infinity, qb - now.b / now.ub);
+        for (const [f, q] of [[g.a, na], [g.b, nb]] as const) { this.q.set(f.id, q); const js = this.joints.find(j => j.id === f.id); if (js) js.q = q; }
+        if (now.a > -0.05 && now.b > -0.05) { pressing = o; if (!o.held) { o.held = { by: key, rel: rest }; o.vy = 0; } }
+        else if (o.held) this.release(o);
+        break;
+      }
+      for (const o of this.objects) if (o.held?.by === key && o !== pressing) this.release(o);
+    }
+  }
+  /** Let go: the block keeps its place and heading, stands upright, and falls. */
+  private release(o: WorldObject) {
+    o.held = undefined;
+    const p = new THREE.Vector3().setFromMatrixPosition(o.m), x = new THREE.Vector3(1, 0, 0).transformDirection(o.m);
+    o.m.compose(p, new THREE.Quaternion().setFromAxisAngle(UP, Math.atan2(-x.z, x.x)), ONE);
+    o.vy = 0;
+  }
+  /** Held blocks follow the hand; loose ones fall to the floor or onto what is under them. */
+  private carry(dt: number) {
+    for (const o of this.objects) {
+      if (o.held) { const hand = this.pose.get(this.grippers.find(g => g.a.id === o.held!.by)?.parent ?? ''); if (hand) o.m.copy(hand.clone().multiply(o.held.rel)); else this.release(o); continue; }
+      const p = new THREE.Vector3().setFromMatrixPosition(o.m), rest = this.support(o, p.x, p.z) + o.size.y / 2;
+      if (p.y <= rest + 1e-3) { p.y = rest; o.vy = 0; }
+      else { o.vy += 9810 * dt; p.y = Math.max(rest, p.y - o.vy * dt); if (p.y === rest) o.vy = 0; }
+      o.m.setPosition(p);
+    }
+  }
+  /** Height of the top surface under (x, z): the floor, a fixed obstacle, or another block. */
+  private support(self: WorldObject, x: number, z: number) {
+    let top = 0;
+    for (const ob of this.spec?.world?.obstacles ?? []) {
+      if (ob.pick) continue;
+      const dx = x - ob.pos[0], dz = z - ob.pos[1], a = -(ob.rot ?? 0) * D2R, lx = dx * Math.cos(a) + dz * Math.sin(a), lz = -dx * Math.sin(a) + dz * Math.cos(a);
+      const inside = ob.shape === 'cyl' ? Math.hypot(dx, dz) <= ob.size[0] / 2 : Math.abs(lx) <= ob.size[0] / 2 && Math.abs(lz) <= ob.size[2] / 2;
+      if (inside) top = Math.max(top, ob.size[1]);
+    }
+    const me = new THREE.Vector3().setFromMatrixPosition(self.m);
+    for (const o of this.objects) {
+      if (o === self || o.held) continue;
+      const p = new THREE.Vector3().setFromMatrixPosition(o.m);
+      if (p.y + o.size.y / 2 > me.y - self.size.y / 2 + 1) continue; // beside or above, not below
+      if (Math.hypot(x - p.x, z - p.z) <= Math.max(o.size.x, o.size.z) / 2) top = Math.max(top, p.y + o.size.y / 2);
+    }
+    return top;
+  }
+
+  private stepPhysics(dt: number, comps: CompInstance[], bench: BenchLike, running: boolean) {
+    const targets = new Map<string, number | { vel: number }>();
+    const cv = this.cmdVel, rosDrive = !running && cv && performance.now() - cv.t < 1000;
+    for (const js of this.joints) {
+      const j = js.joint, t = running ? this.target(j, comps, bench) : null;
+      js.driven = !!t;
+      if (t?.speed != null) { targets.set(js.id, { vel: t.speed * t.rate! }); js.target = js.q; continue; }
+      if (j.type === 'wheel') { if (rosDrive) { const w = wheelsOf(this.model.parts).find(x => x.id === js.id); if (w) targets.set(js.id, { vel: ((cv!.v - cv!.w * w.x) / w.radius) * (180 / Math.PI) }); } else targets.set(js.id, { vel: 0 }); continue; }
+      const goal = clampJoint(j, t?.q ?? this.manual.get(js.id) ?? js.target);
+      js.target = goal;
+      // the servo's own speed limit: the command slews toward the goal
+      let c = this.cmd.get(js.id) ?? js.q;
+      const sp = j.type === 'prismatic' ? 200 : this.servoOf(j, comps).speed;
+      c += Math.max(-sp * dt, Math.min(sp * dt, goal - c));
+      this.cmd.set(js.id, c);
+      targets.set(js.id, c);
+    }
+    const q = this.phys!.step(dt, targets);
+    for (const js of this.joints) {
+      const v = q.get(js.id) ?? 0;
+      if (js.joint.type === 'wheel') { const prev = this.q.get(js.id) ?? 0, d = ((v - prev + 540) % 360) - 180; this.q.set(js.id, prev + d); js.q = prev + d; this.wheelDeg.set(js.id, prev + d); }
+      else { this.q.set(js.id, v); js.q = v; }
+      // a servo that can't reach its command is being overpowered (gravity, a heavy load)
+      const c = this.cmd.get(js.id);
+      js.sag = c != null && js.joint.type === 'revolute' && Math.abs(c - js.q) > 4 ? js.q - c : 0;
+    }
+    this.pose = this.phys!.pose();
+    this.body.m.copy(this.pose.get(this.phys!.root().head.id) ?? new THREE.Matrix4());
+    this.legs.fallen = new THREE.Vector3(0, 1, 0).transformDirection(this.body.m).y < 0.5;
+    // pickable blocks are rigid bodies: their poses come from the physics
+    for (const mv of this.phys!.movables()) { const o = this.objects.find(x => x.index === mv.index); if (o) { o.held = undefined; o.m.compose(new THREE.Vector3(...mv.pos), new THREE.Quaternion(...mv.quat), new THREE.Vector3(1, 1, 1)); } }
     this.sense(comps, bench, dt);
   }
 
@@ -219,6 +394,30 @@ export class RobotSim {
     }
     void dt;
   }
+}
+const D2R = Math.PI / 180, UP = new THREE.Vector3(0, 1, 0), ONE = new THREE.Vector3(1, 1, 1);
+const restQuat = (p: BuiltPart) => new THREE.Quaternion().setFromEuler(new THREE.Euler(p.rot[0] * D2R, p.rot[1] * D2R, p.rot[2] * D2R));
+/** Half the part's thickness along direction u (rest model space). */
+function halfAlong(p: BuiltPart, u: THREE.Vector3) {
+  const l = u.clone().applyQuaternion(restQuat(p).invert());
+  return (Math.abs(l.x) * p.size[0] + Math.abs(l.y) * p.size[1] + Math.abs(l.z) * p.size[2]) / 2;
+}
+/** Half a block's extent along u, given the block's orientation q (same space as u). */
+function halfOf(o: WorldObject, u: THREE.Vector3, q: THREE.Quaternion) {
+  const l = u.clone().applyQuaternion(q.clone().invert()), s = o.size;
+  if (o.shape === 'cyl') return Math.hypot(l.x, l.z) * s.x / 2 + Math.abs(l.y) * s.y / 2;
+  return (Math.abs(l.x) * s.x + Math.abs(l.y) * s.y + Math.abs(l.z) * s.z) / 2;
+}
+/** Grippers: pairs of prismatic fingers on one actuator channel that share a parent. */
+function findGrippers(parts: BuiltPart[]): Gripper[] {
+  const groups = new Map<string, BuiltPart[]>();
+  for (const p of parts) {
+    const d = p.joint?.type === 'prismatic' ? p.joint.drive : undefined;
+    if (!d || !p.parent) continue;
+    const k = `${d.comp}:${d.channel ?? 0}:${p.parent}`;
+    groups.set(k, [...(groups.get(k) ?? []), p]);
+  }
+  return [...groups.values()].filter(g => g.length === 2).map(([a, b]) => ({ a, b, parent: a.parent! }));
 }
 function descends(p: BuiltPart, ancestor: string, byId: Map<string, BuiltPart>) {
   for (let q: BuiltPart | undefined = p, n = 0; q && n < 64; q = q.parent ? byId.get(q.parent) : undefined, n++) if (q.id === ancestor) return true;

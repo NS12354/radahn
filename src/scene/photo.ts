@@ -8,6 +8,9 @@ import * as THREE from 'three';
 import { WebGLPathTracer, GradientEquirectTexture } from 'three-gpu-pathtracer';
 import type { Viewport } from './viewport';
 
+// three-gpu-pathtracer reads scene.environmentRotation / backgroundRotation (three r162+); give every Scene them on r160
+for (const k of ['environmentRotation', 'backgroundRotation']) if (!(k in new THREE.Scene())) Object.defineProperty(THREE.Scene.prototype, k, { configurable: true, get(this: any) { return (this['_' + k] ??= new THREE.Euler()); }, set(this: any, v) { this['_' + k] = v; } });
+
 export interface PhotoSession { samples(): number; stop(): void; save(): string }
 
 export function startPhoto(V: Viewport, onSample: (n: number) => void, target = 256): PhotoSession {
@@ -28,6 +31,9 @@ export function startPhoto(V: Viewport, onSample: (n: number) => void, target = 
   }
   scene.environment = env; scene.background = env; (scene as any).environmentIntensity = 1;
   (scene as any).backgroundBlurriness = 0.4;
+  // physical materials default to attenuationDistance = Infinity, which packs as NaN on the GPU (renders black): use a huge finite value
+  const fixed: { m: THREE.MeshPhysicalMaterial; cc: number; ad: number }[] = [];
+  scene.traverse((o: any) => { const ms = Array.isArray(o.material) ? o.material : o.material ? [o.material] : []; for (const m of ms) if (m.isMeshPhysicalMaterial && !fixed.some(f => f.m === m)) { fixed.push({ m, cc: m.clearcoat, ad: m.attenuationDistance }); if (!isFinite(m.attenuationDistance)) m.attenuationDistance = 1e9; m.clearcoat = 0; } });
   const pt = new WebGLPathTracer(V.renderer);
   pt.tiles.set(2, 2);
   pt.bounces = 6; pt.filterGlossyFactor = 0.4; pt.renderDelay = 0; pt.fadeDuration = 0; pt.minSamples = 1;
@@ -36,7 +42,7 @@ export function startPhoto(V: Viewport, onSample: (n: number) => void, target = 
   const loop = () => {
     if (stopped) return;
     pt.renderSample();
-    onSample(pt.isCompiling ? -1 : Math.floor(pt.samples));
+    onSample((pt as any).isCompiling ? -1 : Math.floor(pt.samples));
     if (pt.samples < target) requestAnimationFrame(loop);
   };
   requestAnimationFrame(loop);
@@ -47,6 +53,7 @@ export function startPhoto(V: Viewport, onSample: (n: number) => void, target = 
       stopped = true; pt.dispose(); env.dispose();
       scene.environment = prev.env; scene.background = prev.bg; (scene as any).environmentIntensity = prev.envI; (scene as any).backgroundBlurriness = 0;
       for (const o of hidden) o.visible = true;
+      for (const f of fixed) { f.m.attenuationDistance = f.ad; f.m.clearcoat = f.cc; }
       if (floor) { scene.remove(floor); floor.geometry.dispose(); (floor.material as THREE.Material).dispose(); }
       V.paused = false;
     },

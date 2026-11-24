@@ -486,6 +486,8 @@ body.m-elec.claude-wide #app{grid-template-columns:240px 1fr 760px}
 .robotp .rprow input[type=number]{width:62px} .robotp .rprow.ros input[type=text]{flex:1;min-width:120px}
 .robotp select,.robotp input[type=number],.robotp input[type=text]{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:5px;padding:2px 4px;font-size:11px}
 .robotp .rpposes{display:flex;flex-wrap:wrap;gap:4px} .robotp .rppose{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:1px 8px;cursor:pointer} .robotp .rppose:hover{border-color:var(--accent)}
+.robotp .rpobj{display:inline-flex;align-items:center;gap:5px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:1px 2px 1px 7px} .robotp .rpobj i{width:8px;height:8px;border-radius:2px;display:inline-block}
+.robotp .rpdel{background:none;border:0;color:var(--faint);cursor:pointer;padding:0 5px;font-size:13px;line-height:1;border-radius:8px} .robotp .rpdel:hover,.robotp .rpdel:focus-visible{color:var(--bad);background:#ff5c5c1f}
 .robotp .rpnote{color:var(--faint);font-size:10.5px}
 .svgrid{display:grid;grid-template-columns:repeat(8,1fr);gap:3px;width:100%}
 .svgrid .sv{position:relative;height:22px;border-radius:4px;background:#202227;display:flex;align-items:flex-end;justify-content:center;font-size:8px;color:var(--faint)}
