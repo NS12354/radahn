@@ -13,6 +13,7 @@ import { EmptyProduct } from './scene/empty';
 import { BuiltProduct } from './scene/built';
 import { initRobot, robotFrame } from './ui/robot';
 import { initViewTools } from './ui/viewtools';
+import { initCoach, coachProject, showCoach } from './ui/coach';
 import { robotProject, type RobotKind } from './app/robots';
 import { ElectronicsView } from './scene/electronics';
 import { gizmoBusy, initModeler, newBuiltModel, runAutoBuild, syncGizmo } from './ui/modeler';
@@ -92,6 +93,7 @@ class FormframeApp implements App {
     initElec(this);
     initRobot(this);
     initViewTools(this);
+    initCoach(this);
     this.wireUI();
     this.renderAll();
     this.setMode('design');
@@ -229,6 +231,7 @@ class FormframeApp implements App {
     await saveProject(id, p, null);
     await this.load(p, msg, id);
     if (p.product.source === 'none') this.setMode('design');
+    coachProject();
   }
   private async duplicateProject(id: string) {
     const p = await loadProject(id), meta = await getMeta(id);
@@ -498,6 +501,7 @@ class FormframeApp implements App {
       if (a === 'home') this.goHome();
       if (a === 'newBlank') this.createProject(blankProject(this.project.electronics.board), 'Blank project');
       if (a === 'newExample') this.createProject(defaultProject(), 'The First Step');
+      if (a === 'coach') showCoach();
       if (a === 'tour') startTour();
       if (a === 'open') $('#fileProject').click();
       if (a === 'openFolder') this.openFolder();

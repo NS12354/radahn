@@ -264,16 +264,16 @@ function renderInspector(app: App) {
     <div class="row"><label>Name</label><input type="text" id="bName" value="${esc(p.name)}" style="flex:1"></div>
     <div class="row"><label>Shape</label><select id="bShape" style="flex:1">${opts(Object.fromEntries(Object.entries(SHAPES).map(([k, s]) => [k, s.label])), p.shape)}</select></div>
     <div class="row"><label>Role</label><select id="bRole" style="flex:1">${opts(ROLES as any, p.role)}</select></div>
-    <div class="row"><label>Kind</label><select id="bKind" style="flex:1">${opts(KINDS, p.kind ?? 'ext')}</select></div>
+    <div class="row adv"><label>Kind</label><select id="bKind" style="flex:1">${opts(KINDS, p.kind ?? 'ext')}</select></div>
     <div class="gizmo seg2" id="gizmoMode"><button data-g="translate">Move</button><button data-g="rotate">Rotate</button><button data-g="scale">Resize</button></div>
     <div class="row tri hd"><label></label><span>X</span><span>Y</span><span>Z</span></div>
     ${tri('Size mm', 'bs', p.size)}${tri('Position', 'bp', p.pos)}${tri('Rotation °', 'br', p.rot, 15)}
     ${prm ? `<div class="row"><label>${prm[0]}</label><input type="number" id="bParam" value="${p.param ?? 0}" min="${prm[1]}" max="${prm[2]}" step="${prm[3]}" style="flex:1"></div>` : ''}
     ${segOk ? `<div class="row"><label>Segments</label><input type="number" id="bSeg" value="${p.segments ?? 1}" min="1" max="256" step="1" style="flex:1"></div>` : ''}
     <div class="row"><label>Color</label><input type="color" id="bColor" value="${p.color}"><select id="bFinish" style="flex:1">${opts(FIN, p.finish)}</select></div>
-    <div class="row"><label>Repeat</label><input type="number" id="bArrN" value="${a?.n ?? 1}" min="1" max="500" step="1" style="width:58px"><select id="bArrMode" style="flex:1"><option value="linear" ${a?.mode !== 'radial' ? 'selected' : ''}>in a line</option><option value="radial" ${a?.mode === 'radial' ? 'selected' : ''}>around a centre</option></select></div>
+    <div class="row adv"><label>Repeat</label><input type="number" id="bArrN" value="${a?.n ?? 1}" min="1" max="500" step="1" style="width:58px"><select id="bArrMode" style="flex:1"><option value="linear" ${a?.mode !== 'radial' ? 'selected' : ''}>in a line</option><option value="radial" ${a?.mode === 'radial' ? 'selected' : ''}>around a centre</option></select></div>
     ${a && a.n > 1 ? a.mode === 'radial' ? `<div class="row tri"><label>Centre</label>${num('bac0', a.center?.[0] ?? 0)}${num('bac1', a.center?.[1] ?? 0)}<span></span></div>` : tri('Step mm', 'bas', a.step ?? [10, 0, 0]) : ''}
-    <div class="row"><label>Explode</label><input type="number" id="bLayer" value="${p.layer ?? 0}" step="1" style="flex:1" title="Exploded view moves the part this many steps along Z"></div>
+    <div class="row adv"><label>Explode</label><input type="number" id="bLayer" value="${p.layer ?? 0}" step="1" style="flex:1" title="Exploded view moves the part this many steps along Z"></div>
     ${jointHTML(app, p)}
     ${p.auto ? `<label class="keep"><input type="checkbox" id="bKeep"> Keep this part when I rebuild <span>(auto-built parts are replaced)</span></label>` : ''}
     <div class="row" style="margin-top:10px"><button class="btn" id="bDup" style="flex:1">Duplicate</button><button class="btn" id="bMirror" style="flex:1" title="Copy mirrored across X = 0">Mirror X</button><button class="btn" id="bDel" style="flex:1">Delete</button></div>`;
