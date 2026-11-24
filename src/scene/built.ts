@@ -134,7 +134,7 @@ export class BuiltProduct extends Product {
     this.worldG.clear();
     this.pickMeshes.clear();
     if (!w) { this.mm.remove(this.worldG); return; }
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(w.size, w.size), new THREE.MeshPhysicalMaterial({ color: 0x9d9a94, roughness: 0.85, clearcoat: 0.05 }));
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(w.size, w.size), new THREE.MeshPhysicalMaterial({ color: 0x9d9a94, roughness: 0.85 }));
     floor.rotation.x = -Math.PI / 2; floor.position.y = -0.2; floor.receiveShadow = true;
     this.worldG.add(floor);
     const grid = new THREE.GridHelper(w.size, Math.round(w.size / 100), 0xb5b1a8, 0xc7c3ba); grid.position.y = -0.1; this.worldG.add(grid);

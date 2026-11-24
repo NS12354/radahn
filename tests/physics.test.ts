@@ -77,3 +77,16 @@ describe('walking under physics', () => {
     expect(sim.body.z).toBeGreaterThan(30);
   }, 60_000);
 });
+
+describe('robot templates are ready to use', () => {
+  it('nothing inside any template collides (no "broken" badge on a fresh robot)', async () => {
+    const { fitBuilt } = await import('../src/app/fit');
+    const { ROBOT_KINDS } = await import('../src/app/robots');
+    for (const k of ROBOT_KINDS) expect(fitBuilt(robotProject(k.id).product.built!.parts).filter(f => f.level === 'err').map(f => f.msg), k.id).toEqual([]);
+  });
+  it('every robot part uses a detailed model or a plain shape that exists', async () => {
+    const { DETAIL_KINDS } = await import('../src/scene/detail');
+    const { ROBOT_KINDS } = await import('../src/app/robots');
+    for (const k of ROBOT_KINDS) for (const p of robotProject(k.id).product.built!.parts) if (p.detail) expect(DETAIL_KINDS, `${k.id}: ${p.name}`).toContain(p.detail.split(':')[0]);
+  });
+});

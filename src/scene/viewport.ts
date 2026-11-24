@@ -133,6 +133,8 @@ export class Viewport {
   private castShadows() {
     this.scene.traverse((o: any) => {
       if (!o.isMesh || o.userData.noShadowCast) return;
+      // nothing inside editing gizmos / helpers casts or catches shadows
+      for (let q = o.parent; q; q = q.parent) if (q.isTransformControls || q.type === 'TransformControls' || q.userData?.noShadowCast) { o.castShadow = o.receiveShadow = false; return; }
       const m = o.material, overlay = m && (m.depthTest === false || m.transparent && m.opacity < 0.3 || o.parent?.type === 'TransformControlsGizmo' || o.type === 'Line');
       o.castShadow = !overlay; o.receiveShadow = !overlay;
     });

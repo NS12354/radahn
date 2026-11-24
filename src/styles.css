@@ -518,3 +518,6 @@ body.simple .adv{display:none!important}
 #coach.min .cbody{display:none}
 .coach-pulse{outline:3px solid var(--accent)!important;outline-offset:3px;border-radius:8px;animation:coachpulse 1s ease-in-out 4}
 @keyframes coachpulse{0%,100%{outline-color:var(--accent)}50%{outline-color:transparent}}
+.robotp{width:300px}
+.robotp .rpj{max-height:min(34vh,260px);overflow:auto;padding-right:2px}
+.robotp .rpr{grid-template-columns:96px 1fr 64px}
