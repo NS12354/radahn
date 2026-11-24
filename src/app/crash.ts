@@ -157,7 +157,7 @@ export class CrashLab {
     const rows: CrashRow[] = [];
     for (const [key, pd] of Object.entries(st)) {
       const rt = d.ratings.get(key); if (!rt) continue;
-      rows.push({ key, name: d.names.get(key) ?? key, what: rt.what, status: statusOf(pd.level), level: pd.level, load: loadText(pd.worst), consequence: pd.level >= 1 ? consequence(rt.effect, rt.fails) : pd.level >= 0.8 ? 'still works, but weakened' : pd.level >= 0.5 ? 'scuffed, works fine' : 'fine' });
+      rows.push({ key, name: d.names.get(key) ?? key, what: rt.what, status: statusOf(pd.level), level: pd.level, load: loadText(pd.worst), consequence: pd.level >= 1 ? consequence(rt.effect, rt.fails) : pd.level >= 0.8 ? 'Still works, but weakened: another hit could break it' : pd.level >= 0.5 ? 'Scuffed, works fine' : 'Fine' });
     }
     rows.sort((a, b) => b.level - a.level);
     const shown = rows.filter(r => r.level >= 0.5);
@@ -170,6 +170,6 @@ export class CrashLab {
 }
 
 function consequence(effect: string, fails: string) {
-  const what: Record<string, string> = { limp: 'the joint goes limp', detach: 'it comes off', 'dead-sensor': 'the sensor stops reading', 'no-power': 'nothing works without it', screen: 'the screen is cracked', hazard: 'unsafe: replace before using', cosmetic: 'cosmetic' };
-  return `${fails}; ${what[effect] ?? ''}`.replace(/; $/, '');
+  const more: Record<string, string> = { 'no-power': ': nothing runs without it', screen: ': the display is unreadable', hazard: '' };
+  return fails[0].toUpperCase() + fails.slice(1) + (more[effect] ?? '');
 }

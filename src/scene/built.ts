@@ -311,8 +311,20 @@ export class BuiltProduct extends Product {
     for (const [id, r] of this.roots) r.traverse((o: any) => {
       const m = o.material;
       if (!o.isMesh || m === this.screenMat || this.ledMats.includes(m) || m.name === 'glow') return;
-      m.emissive?.setHex(id === part ? 0x1c3cff : 0); m.emissiveIntensity = id === part ? 0.3 : 1;
+      const dmg = this.damage.get(id) ?? 0;
+      const [hex, k] = id === part ? [0x1c3cff, 0.3] : dmg >= 1 ? [0xd93025, 0.55] : dmg >= 0.8 ? [0xe37400, 0.4] : [0, 1];
+      m.emissive?.setHex(hex); m.emissiveIntensity = k;
     });
+  }
+  /** Damaged parts glow amber, broken ones red (part id → damage level; joint:<id> keys tint that joint's part). */
+  private damage = new Map<string, number>();
+  private damageSig = '';
+  setDamage(d: Record<string, { level: number }> | undefined) {
+    const m = new Map<string, number>();
+    for (const [k, v] of Object.entries(d ?? {})) { const id = k.startsWith('joint:') ? k.slice(6) : k; m.set(id, Math.max(m.get(id) ?? 0, v.level)); }
+    const sig = JSON.stringify([...m].filter(([, l]) => l >= 0.8).map(([k, l]) => [k, l >= 1]));
+    if (sig === this.damageSig) return;
+    this.damageSig = sig; this.damage = m; this.highlight(this.sel);
   }
 
   tick(dt: number, now: number) {

@@ -138,6 +138,8 @@ export class RobotSim {
     applyBreaks(p, this.damage, this.damage.brokenKeys()); // damage from before (a crash test) still applies
     return p;
   }
+  /** Stall torque of the servo driving a joint (kg·cm; 0 when nothing drives it). */
+  torqueOf(j: Joint) { return j.drive ? this.servoOf(j, this.comps).torque : 0; }
   /** Is this part (or joint) broken? */
   isBroken(key: string) { return (this.model.damage?.[key]?.level ?? 0) >= 1; }
   /** No power: the board, the battery or the motor driver is broken, so the firmware can't move anything. */

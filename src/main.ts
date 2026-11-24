@@ -12,6 +12,7 @@ import { deleteProject, getMeta, loadProject, migrateLegacy, newProjectId, saveP
 import { EmptyProduct } from './scene/empty';
 import { BuiltProduct } from './scene/built';
 import { initRobot, robotFrame } from './ui/robot';
+import { initCrash, crashFrame } from './ui/crash';
 import { initViewTools } from './ui/viewtools';
 import { initCoach, coachProject, showCoach } from './ui/coach';
 import { robotProject, type RobotKind } from './app/robots';
@@ -94,12 +95,13 @@ class FormframeApp implements App {
     initProto(this);
     initElec(this);
     initRobot(this);
+    initCrash(this);
     initViewTools(this);
     initCoach(this);
     this.wireUI();
     this.renderAll();
     this.setMode('design');
-    this.viewport.onTick((dt, now) => { robotFrame(dt); this.product.tick(dt, now); this.elec.tick(dt); elecFrame(dt); placePins(this); });
+    this.viewport.onTick((dt, now) => { robotFrame(dt); crashFrame(dt); this.product.tick(dt, now); this.elec.tick(dt); elecFrame(dt); placePins(this); });
     if (document.fonts?.ready) document.fonts.ready.then(() => { if (this.mode !== 'elec') redrawScreen(this); });
     initTour(m => this.setMode(m));
     initHome({

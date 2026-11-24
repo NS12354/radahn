@@ -36,7 +36,7 @@ describe('crash tests: devices', () => {
     const m = thermostat(), r = await deviceTest(m, { height: 1500, orient: 'front' });
     const screen = r.rows.find(x => x.what === 'Display glass')!;
     expect(screen.status).toBe('broken');
-    expect(screen.consequence).toMatch(/screen is cracked/);
+    expect(screen.consequence).toMatch(/glass cracks/i);
     expect(Object.values(m.damage!).some(d => d.level >= 1)).toBe(true);
     // a second, gentle test still shows it (damage is cumulative)
     const again = await deviceTest(m, { height: 100 });
@@ -56,7 +56,7 @@ describe('crash tests: robots', () => {
     const { p, cs, report } = await robotTest('dog', { height: 1000 });
     const gears = report.rows.filter(r => r.key.startsWith('joint:') && r.status === 'broken');
     expect(gears.length).toBeGreaterThan(0);
-    expect(gears[0].consequence).toMatch(/gears strip/);
+    expect(gears[0].consequence).toMatch(/gears strip/i);
     // back on the bench: the stripped joints don't hold any more
     const sim = new RobotSim(p.product.built!);
     sim.settle(); await sim.setPhysics(true, cs);

@@ -183,10 +183,11 @@ export class Viewport {
   }
 
   /** Frame an object: fit its bounding sphere in view, and move the floor and shadows under it. */
-  frame(obj: THREE.Object3D) {
+  frame(obj: THREE.Object3D, extra: THREE.Vector3[] = []) {
     const box = new THREE.Box3();
     obj.updateWorldMatrix(true, true);
     obj.traverseVisible(o => { if ((o as any).isMesh && !o.userData.world) box.expandByObject(o); });
+    for (const p of extra) box.expandByPoint(p);
     if (box.isEmpty()) box.setFromCenterAndSize(new THREE.Vector3(), new THREE.Vector3(8, 8, 3)); // blank project: default framing
     const s = box.getBoundingSphere(new THREE.Sphere());
     this.placeFloor(box);

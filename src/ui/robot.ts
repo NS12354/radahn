@@ -16,6 +16,7 @@ import { MATERIALS, materialOf, objTitle, type BuiltModel, type ObstacleMaterial
 import { defaultAutoOpts } from '../app/project';
 import { track } from './track';
 import { ARM_PICK, armTable, pickBlock } from '../app/robots';
+import { crashActive } from './crash';
 
 let A: App;
 let sim: RobotSim | null = null;
@@ -47,13 +48,15 @@ export function initRobot(app: App) {
 /** Per frame: step the robot and pose the 3D model. */
 export function robotFrame(dt: number) {
   const m = model(), prod = A.product;
+  if (crashActive()) return; // a crash test owns the model while it runs
   if (!m || !isRobot(m) || !(prod instanceof BuiltProduct)) {
     if (sim) { sim = null; sig = ''; if (prod instanceof BuiltProduct) { prod.setPose(null); prod.setWorld(null); } A.viewport.showFloor(true); bridge.close(); render(); }
     return;
   }
   const s = JSON.stringify(m.parts.map(p => [p.id, p.parent, p.joint, p.foot, p.pos, p.rot, p.size])) + JSON.stringify(m.robot ?? null);
   if (!sim || sim.model !== m) {
-    sim = new RobotSim(m); sim.settle(); sig = s; render(); prod.setPose(sim.pose); prod.setWorld(m.robot?.world); A.viewport.frame(prod.group);
+    sim = new RobotSim(m); sim.settle(); sig = s; render();
+    sim.onBreak = lines => { toast(`Broken in a collision: ${lines.join('; ')}`); A.changed('review'); track('model', `Collision damage: ${lines.join('; ')}`); }; prod.setPose(sim.pose); prod.setWorld(m.robot?.world); A.viewport.frame(prod.group);
     if (m.robot && m.robot.physics !== false) { const me = sim; me.setPhysics(true, A.project.electronics.comps).then(() => render()).catch(e => toast("Physics couldn't start: " + e.message)); }
   }
   else if (s !== sig) { sig = s; sim.resync(); sim.settle(); render(); }
