@@ -79,7 +79,7 @@ export const M = {
   pcb: (c: string, seed = 1) => mat(`pcb${c}${seed}`, () => new THREE.MeshPhysicalMaterial({ color: '#ffffff', map: pcbTex(c, seed), roughness: 0.45, clearcoat: 0.5, clearcoatRoughness: 0.25 })),
   pcbEdge: (c: string) => mat(`pce${c}`, () => new THREE.MeshPhysicalMaterial({ color: new THREE.Color(c).multiplyScalar(0.7), roughness: 0.6 })),
   label: (t: string, bg: string) => mat(`lb${t}${bg}`, () => new THREE.MeshPhysicalMaterial({ map: labelTex(t, bg), roughness: 0.5, clearcoat: 0.4 })),
-  led: (c: string) => mat(`led${c}`, () => Object.assign(new THREE.MeshPhysicalMaterial({ color: c, emissive: c, emissiveIntensity: 0.6, roughness: 0.2, transmission: 0.3 }), { name: 'glow' })),
+  led: (c: string) => mat(`led${c}`, () => Object.assign(new THREE.MeshPhysicalMaterial({ color: c, emissive: c, emissiveIntensity: 3, roughness: 0.2, transmission: 0.3 }), { name: 'glow' })),
   mesh: () => mat('mesh', () => new THREE.MeshPhysicalMaterial({ color: '#9fa4ab', metalness: 0.9, roughness: 0.55, map: canvasTex('meshgrid', 64, 64, (g) => { g.fillStyle = '#888'; g.fillRect(0, 0, 64, 64); g.fillStyle = '#222'; for (let y = 0; y < 64; y += 4) for (let x = (y / 4) % 2 * 2; x < 64; x += 4) g.fillRect(x, y, 2, 2); }) })),
   wire: (c: string) => mat(`w${c}`, () => new THREE.MeshPhysicalMaterial({ color: c, roughness: 0.5, clearcoat: 0.6 })),
 };

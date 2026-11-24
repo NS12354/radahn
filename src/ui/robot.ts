@@ -45,15 +45,16 @@ export function initRobot(app: App) {
 export function robotFrame(dt: number) {
   const m = model(), prod = A.product;
   if (!m || !isRobot(m) || !(prod instanceof BuiltProduct)) {
-    if (sim) { sim = null; sig = ''; if (prod instanceof BuiltProduct) { prod.setPose(null); prod.setWorld(null); } bridge.close(); render(); }
+    if (sim) { sim = null; sig = ''; if (prod instanceof BuiltProduct) { prod.setPose(null); prod.setWorld(null); } A.viewport.showFloor(true); bridge.close(); render(); }
     return;
   }
   const s = JSON.stringify(m.parts.map(p => [p.id, p.parent, p.joint, p.foot, p.pos, p.rot, p.size])) + JSON.stringify(m.robot ?? null);
-  if (!sim || sim.model !== m) { sim = new RobotSim(m); sim.settle(); sig = s; render(); }
+  if (!sim || sim.model !== m) { sim = new RobotSim(m); sim.settle(); sig = s; render(); prod.setPose(sim.pose); prod.setWorld(m.robot?.world); A.viewport.frame(prod.group); }
   else if (s !== sig) { sig = s; sim.resync(); sim.settle(); render(); }
   sim.step(dt, A.project.electronics.comps, A.bench, firmwareRunning());
   prod.setPose(sim.pose);
   prod.setWorld(m.robot?.world);
+  A.viewport.showFloor(!m.robot?.world);
   uiT += dt; if (uiT > 0.1) { uiT = 0; live(); }
 }
 

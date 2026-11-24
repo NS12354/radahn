@@ -131,7 +131,7 @@ export class BuiltProduct extends Product {
     this.worldG.traverse((o: any) => { o.geometry?.dispose(); o.material?.dispose?.(); });
     this.worldG.clear();
     if (!w) { this.mm.remove(this.worldG); return; }
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(w.size, w.size), new THREE.MeshStandardMaterial({ color: 0xd9d6cf, roughness: 0.95 }));
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(w.size, w.size), new THREE.MeshPhysicalMaterial({ color: 0xcfcbc3, roughness: 0.82, clearcoat: 0.08 }));
     floor.rotation.x = -Math.PI / 2; floor.position.y = -0.2; floor.receiveShadow = true;
     this.worldG.add(floor);
     const grid = new THREE.GridHelper(w.size, Math.round(w.size / 100), 0xb5b1a8, 0xc7c3ba); grid.position.y = -0.1; this.worldG.add(grid);
@@ -152,6 +152,7 @@ export class BuiltProduct extends Product {
       m.position.set(o.pos[0], o.size[1] / 2, o.pos[1]); m.castShadow = true;
       this.worldG.add(m);
     }
+    this.worldG.traverse((o: any) => { o.userData.world = true; if (o.isMesh) { o.receiveShadow = true; o.castShadow = !(o.geometry instanceof THREE.PlaneGeometry); } });
     this.mm.add(this.worldG);
   }
 

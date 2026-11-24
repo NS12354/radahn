@@ -66,7 +66,7 @@ export class Viewport {
     this.gtao.output = GTAOPass.OUTPUT.Default;
     this.gtao.blendIntensity = 0.85;
     this.composer.addPass(this.gtao);
-    this.bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.22, 0.35, 0.92);
+    this.bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.35, 0.4, 1.6); // only emissive LEDs / lit screens bloom
     this.composer.addPass(this.bloom);
     this.composer.addPass(new OutputPass());
 
