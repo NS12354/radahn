@@ -10,7 +10,7 @@
  */
 import * as THREE from 'three';
 import { autoBuild } from './autobuild';
-import { defaultAutoOpts, newUid, type BuiltPart, type Obstacle, type Project } from './project';
+import { defaultAutoOpts, newBuiltModel, newUid, type BuiltPart, type Obstacle, type Project } from './project';
 import { BOARDS } from '../hw/library/boards';
 import { COMPONENTS } from '../hw/library/components';
 
@@ -57,6 +57,37 @@ function freeSpot(p: Project, size: [number, number, number]): [number, number] 
 }
 
 /**
+ * Electronics you add show up in the 3D model as real parts you can select and move
+ * (no case: Auto build makes one only when you ask). Used for projects whose model is
+ * built from parts or not made yet; the built-in thermostat and imported CAD models are
+ * left alone, and robots get loose parts in their world instead. Each component is
+ * placed once, where auto build's layout puts it; its pieces move together. They're
+ * marked auto, so Auto build lays them out again inside the case it makes.
+ */
+export function placeElectronics(p: Project): boolean {
+  const src = p.product.source, comps = p.electronics.comps;
+  if ((src !== 'none' && src !== 'built') || p.product.built?.robot || !comps.length) return false;
+  const board = BOARDS[p.electronics.board]; if (!board) return false;
+  const m = p.product.built ?? newBuiltModel();
+  const placed = new Set(m.placed ?? []), todo = ['board', ...comps.map(c => c.uid)].filter(k => !placed.has(k) && !m.parts.some(q => q.comp === k));
+  if (!todo.length) { if (!m.placed || m.placed.length !== placed.size) m.placed = [...placed]; return false; }
+  let layout: BuiltPart[] = [];
+  try { layout = autoBuild(board, comps, m.auto ?? defaultAutoOpts()).parts.filter(x => x.kind === 'internal'); } catch { layout = []; }
+  let added = false;
+  for (const key of todo) {
+    const mine = layout.filter(q => q.comp === key); placed.add(key);
+    if (!mine.length) continue;
+    const ids = new Map(mine.map(q => [q.id, `${q.id}-${newUid()}`]));
+    const main = mine.reduce((a, b) => (a.size[0] * a.size[1] * a.size[2] >= b.size[0] * b.size[1] * b.size[2] ? a : b));
+    for (const q of mine) m.parts.push({ ...q, id: ids.get(q.id)!, parent: q.parent && ids.has(q.parent) ? ids.get(q.parent) : q === main ? undefined : ids.get(main.id), auto: true });
+    added = true;
+  }
+  m.placed = [...placed];
+  if (added && !p.product.built) { p.product.built = m; p.product.source = 'built'; }
+  return added;
+}
+
+/**
  * A component removed in Electronics takes its 3D part with it (a display module, a
  * sensor, a button cap...), on any model, along with parts mounted on that part
  * (its display window, say). Parts not tied to a component are never touched.
@@ -76,9 +107,10 @@ export function dropRemovedParts(m: { parts: { id: string; parent?: string; comp
  * loose object and attached parts go away. Returns true when it changed anything.
  */
 export function syncLooseParts(p: Project): boolean {
-  const m = p.product.built; if (!m) return false;
+  const placedNow = placeElectronics(p);
+  const m = p.product.built; if (!m) return placedNow;
   const uids = new Set(p.electronics.comps.map(c => c.uid));
-  let changed = dropRemovedParts(m, uids);
+  let changed = dropRemovedParts(m, uids) || placedNow;
   const w = m.robot?.world; if (!w) return changed;
   const sp = m.robot!;
   const placed = new Set((sp.placed ?? []).filter(u => uids.has(u)));

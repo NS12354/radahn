@@ -20,10 +20,11 @@ test('3D modeler: Blender-style edits sync back to the studio', async ({ page, c
   const errs = errors(page);
   await newProject(page, 'blank');
   await page.click('#eBuild');
+  await page.click('#shapeBtns button[data-s="rbox"]'); // a new model starts empty
   const md = await popup(context, page, '#bModeler');
   const mErrs = errors(md);
-  await expect(md.locator('#outliner .orow', { hasText: 'Housing' })).toBeVisible();
-  await md.locator('#outliner .orow', { hasText: 'Housing' }).click();
+  await expect(md.locator('#outliner .orow', { hasText: 'Rounded 1' })).toBeVisible();
+  await md.locator('#outliner .orow', { hasText: 'Rounded 1' }).click();
   await md.mouse.move(700, 400);
   await md.keyboard.press('g'); await md.keyboard.press('x'); await md.keyboard.type('10'); await md.keyboard.press('Enter');
   await md.keyboard.press('Shift+A'); await md.locator('.bmenu .mi', { hasText: 'Mesh' }).hover(); await md.locator('.bmenu .mi', { hasText: /^Cube$/ }).first().click();
@@ -32,15 +33,16 @@ test('3D modeler: Blender-style edits sync back to the studio', async ({ page, c
   const cube = await md.evaluate(() => { const S = (window as any).modeler.S; return S.built.parts.find((p: any) => p.id === S.active); });
   expect(cube.rot).toEqual([0, 0, 0]);
   await expect.poll(() => page.evaluate(() => (window as any).formframe.project.product.built?.parts.length), { timeout: 15_000 }).toBe(2);
-  expect(await page.evaluate(() => (window as any).formframe.project.product.built.parts.find((p: any) => p.name === 'Housing').pos[0])).toBe(10);
+  expect(await page.evaluate(() => (window as any).formframe.project.product.built.parts.find((p: any) => p.name === 'Rounded 1').pos[0])).toBe(10);
   expect([...errs, ...mErrs]).toEqual([]);
 });
 
 test('Edit Mode: inset and extrude a face, then leave an untouched primitive alone', async ({ page, context }) => {
   await newProject(page, 'blank');
   await page.click('#eBuild');
+  await page.click('#shapeBtns button[data-s="rbox"]'); // a new model starts empty
   const md = await popup(context, page, '#bModeler');
-  await md.locator('#outliner .orow', { hasText: 'Housing' }).click();
+  await md.locator('#outliner .orow', { hasText: 'Rounded 1' }).click();
   await md.mouse.move(700, 380); await md.keyboard.press('Tab');
   await expect(md.locator('#modeDrop')).toHaveText('Edit Mode ▾');
   await md.keyboard.press('3'); await md.keyboard.press('Numpad1'); await md.keyboard.press('Alt+a');

@@ -178,7 +178,7 @@ class FormframeApp implements App {
     if (what === 'electronics' || what === 'product') { clearTimeout(this.hT); this.hT = setTimeout(() => refreshStatic(), 150); }
     if (what === 'electronics' || what === 'meta') { clearTimeout(this.devT); this.devT = setTimeout(() => notifyDevice(), 200); }
     if (what === 'electronics' || what === 'product') { clearTimeout(this.elecT); this.elecT = setTimeout(() => this.refreshElectronics(), 150); }
-    if (what === 'electronics' && syncLooseParts(this.project)) { if (this.product instanceof BuiltProduct) { this.product.build(); if (this.selected && !this.project.product.built?.parts.some(q => q.id === this.selected)) this.selectPart(null); } this.changed('product'); renderRobotPanel(); } // removed parts leave the model; new ones appear loose in a robot's world
+    if (what === 'electronics' && syncLooseParts(this.project)) { if (this.product instanceof BuiltProduct && this.product.model === this.project.product.built) { this.product.build(); if (this.selected && !this.project.product.built?.parts.some(q => q.id === this.selected)) this.selectPart(null); } else void this.rebuildProduct().then(() => renderDesign(this)); this.changed('product'); renderRobotPanel(); } // removed parts leave the model; new ones appear loose in a robot's world
     if (what === 'electronics') { clearTimeout(this.clT); this.clT = setTimeout(() => { claudeFilesChanged(); claudeContextChanged(); }, 250); }
     clearTimeout(this.saveT);
     if (this.projectId) { const b = $('#bSave') as HTMLButtonElement; b.disabled = false; b.classList.remove('clean'); b.textContent = 'Save'; } // at once; checked properly below

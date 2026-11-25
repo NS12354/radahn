@@ -36,7 +36,7 @@ test('removing a part in Electronics removes it from the 3D model too', async ({
   await mode(page, 'elec');
   await page.click('#libList button[data-t="oled"]');
   await mode(page, 'design');
-  await page.click('#vpEmpty button:has-text("Auto build")');
+  await page.click('#bAutoBuild');
   const names = () => page.evaluate(() => (window as any).formframe.project.product.built?.parts.map((p: any) => p.name) ?? []);
   await expect.poll(async () => (await names()).filter((n: string) => /OLED/.test(n)).length).toBe(2); // the module and its window
   await mode(page, 'elec');
@@ -44,5 +44,37 @@ test('removing a part in Electronics removes it from the 3D model too', async ({
   await expect.poll(async () => (await names()).filter((n: string) => /OLED/.test(n)).length).toBe(0);
   expect((await names()).some((n: string) => /Pico/.test(n))).toBe(true); // the rest stays
   await expect.poll(() => page.evaluate(() => [...(window as any).formframe.product.roots.values()].filter((r: any) => /OLED/.test(r.userData.part?.name ?? '')).length)).toBe(0);
+  expect(errs).toEqual([]);
+});
+
+test('added electronics appear in the 3D model to move, with no case until Auto build', async ({ page }) => {
+  test.setTimeout(120_000);
+  const errs = errors(page);
+  await newProject(page, 'blank');
+  const parts = () => page.evaluate(() => (window as any).formframe.project.product.built?.parts.map((p: any) => ({ name: p.name, comp: p.comp, parent: p.parent, pos: p.pos })) ?? []);
+  // Auto build with nothing wired builds nothing
+  await page.click('#eAuto');
+  expect(await parts()).toEqual([]);
+  await expect(page.locator('#vpEmpty')).toBeVisible();
+  // add parts: they show up as parts, and no housing
+  await mode(page, 'elec');
+  await page.click('#libList button[data-t="button"]');
+  await page.click('#libList button[data-t="oled"]');
+  await mode(page, 'design');
+  await expect.poll(async () => (await parts()).filter((p: any) => /OLED/.test(p.name)).length).toBeGreaterThan(0);
+  const ps = await parts();
+  expect(ps.some((p: any) => p.comp === 'board')).toBe(true);
+  expect(ps.some((p: any) => /housing|front panel|shell/i.test(p.name))).toBe(false);
+  await expect(page.locator('#vpEmpty')).toBeHidden();
+  // select the display and move it with the inspector: its pieces move together
+  const oled = ps.find((p: any) => /OLED/.test(p.name) && !p.parent)!;
+  // it can be selected, so the Design handles move it
+  await page.evaluate((n) => { const a = (window as any).formframe; a.selectPart(a.project.product.built.parts.find((p: any) => p.name === n && !p.parent).id); }, oled.name);
+  await expect.poll(() => page.evaluate(() => (window as any).formframe.selected)).toBeTruthy();
+  // Auto build now makes a case around them, laying the electronics out inside it (no duplicates)
+  await page.click('#bAutoBuild');
+  await expect.poll(async () => (await parts()).some((p: any) => /housing/i.test(p.name))).toBe(true);
+  const after = await parts();
+  expect(after.filter((p: any) => p.comp === after.find((q: any) => /OLED.*I2C/.test(q.name))?.comp && /I2C/.test(p.name)).length).toBe(1);
   expect(errs).toEqual([]);
 });

@@ -3,8 +3,8 @@ import { toBlender, fromBlender, geoHash } from '../src/app/blenderlink';
 import { newBuiltModel, type BuiltModel } from '../src/app/project';
 
 const model = (): BuiltModel => {
-  const b = newBuiltModel();
-  b.parts[0].pos = [5, -3, 12]; b.parts[0].rot = [10, 25, -40];
+  const b = newBuiltModel(); // starts empty: add the housing these tests move
+  b.parts.push({ id: 'h', name: 'Housing', shape: 'rbox', size: [80, 60, 30], pos: [5, -3, 12], rot: [10, 25, -40], param: 6, color: '#ece9e4', finish: 'matte', role: 'body', kind: 'shell', layer: 0 });
   b.parts.push({ id: 'g', name: 'Grille', shape: 'box', size: [2, 1, 10], pos: [-10, -20, 4], rot: [0, 0, 30], color: '#111111', finish: 'matte', role: 'body', array: { n: 5, mode: 'linear', step: [3, 0, 1] } });
   return b;
 };

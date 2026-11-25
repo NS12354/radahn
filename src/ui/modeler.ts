@@ -166,6 +166,7 @@ function removePart(p: BuiltPart) {
 // ------------------------------------------------------------------ auto build
 export async function runAutoBuild() {
   const prj = A.project, comps = prj.electronics.comps;
+  if (!comps.length) { toast('Add parts in Electronics first. Auto build designs a case around them.'); return; }
   const prev = prj.product.built, src = prj.product.source;
   if (src === 'parametric' || src === 'imported') {
     if (!window.confirm?.(`Replace the ${src === 'parametric' ? 'built-in thermostat' : 'imported CAD'} model with one auto-built from the electronics? You can switch back from the Project menu.`)) return;

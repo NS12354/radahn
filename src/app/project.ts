@@ -176,6 +176,8 @@ export interface BuiltModel {
   rev?: number;
   /** Set when the model is a robot: how it moves and its surroundings. */
   robot?: RobotSpec;
+  /** Components already shown in the model (see placeElectronics): deleting one's 3D part doesn't bring it back. */
+  placed?: string[];
   /** What impacts have done to its parts (crash tests and live collisions), until repaired. Keys: part ids, or joint:<id> for servo gears. */
   damage?: Record<string, import('./damage').PartDamage>;
 }
@@ -183,8 +185,9 @@ export interface BuiltModel {
 export const defaultAutoOpts = (): AutoBuildOpts => ({ style: 'auto', wall: 2, clearance: 1, battery: false, mount: 'none' });
 
 /** A fresh built model: one rounded-box housing, like Blender's default cube. */
+/** A model made of parts, starting empty: no case until you add shapes or press Auto build. */
 export function newBuiltModel(): BuiltModel {
-  return { parts: [{ id: newUid(), name: 'Housing', shape: 'rbox', size: [80, 60, 30], pos: [0, 0, 0], rot: [0, 0, 0], param: 6, color: '#ece9e4', finish: 'matte', role: 'body', kind: 'shell', layer: 0 }], xray: false, auto: defaultAutoOpts(), notes: [] };
+  return { parts: [], xray: false, auto: defaultAutoOpts(), notes: [] };
 }
 
 export interface Transition { from: string; trig: string; to: string; act: string; led: string; hap: boolean; snd: boolean }

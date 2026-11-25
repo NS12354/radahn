@@ -378,6 +378,7 @@ function snapOp(k: string) {
 async function runAutoBuild() {
   const prj = S.project; if (!prj) return;
   const comps = prj.electronics.comps, o = S.built.auto ?? defaultAutoOpts();
+  if (!comps.length) { report('Add parts in Electronics first. Auto Build designs a case around them.'); return; }
   const r = autoBuild(BOARDS[prj.electronics.board], comps, o);
   const m = mergeRebuild(parts(), r, comps, o.battery);
   if (m.dropped.length) r.notes.unshift(`Removed ${m.dropped.join(', ')}: that hardware is no longer wired.`);
