@@ -150,13 +150,33 @@ export async function signUp(email: string, password: string) {
   if (error) throw new Error(error.message);
   return !data.session;
 }
-export async function sendLink(email: string) {
+/**
+ * Emails carry a 6-digit code rather than a link: mail scanners (common on school and
+ * work addresses) open every link in a message, which would use up a one-time link
+ * before the person clicks it. A code can only be used by typing it in.
+ * (The redirect is still passed so emails sent from an older template keep working.)
+ */
+export type CodeFor = 'signup' | 'signin' | 'reset';
+/** Email a sign-in code (no password needed). */
+export async function sendCode(email: string) {
   const { error } = await client()!.auth.signInWithOtp({ email, options: { emailRedirectTo: redirect() } });
   if (error) throw new Error(error.message);
 }
 export async function sendReset(email: string) {
   const { error } = await client()!.auth.resetPasswordForEmail(email, { redirectTo: redirect() });
   if (error) throw new Error(error.message);
+}
+/** Send the same kind of code again. */
+export async function resendCode(email: string, what: CodeFor) {
+  if (what === 'signin') return sendCode(email);
+  if (what === 'reset') return sendReset(email);
+  const { error } = await client()!.auth.resend({ type: 'signup', email, options: { emailRedirectTo: redirect() } });
+  if (error) throw new Error(error.message);
+}
+/** Check a code from an email; on success the person is signed in (for 'reset', ready to choose a new password). */
+export async function verifyCode(email: string, token: string, what: CodeFor) {
+  const { error } = await client()!.auth.verifyOtp({ email, token, type: what === 'reset' ? 'recovery' : 'email' });
+  if (error) throw new Error(/expired|invalid/i.test(error.message) ? 'That code is wrong or has expired. Check the newest email, or send a new code.' : error.message);
 }
 export async function setPassword(password: string) {
   const { error } = await client()!.auth.updateUser({ password });

@@ -6,8 +6,11 @@ import type { Page, BrowserContext } from '@playwright/test';
  * computers signed in to one account. It enforces "your own rows only" the way
  * the real row-level security policies do.
  */
-export function fakeSupabase() {
+export function fakeSupabase(opts: { confirmEmail?: boolean } = {}) {
   const users = new Map<string, { id: string; email: string; password: string }>();
+  /** Emails "sent": the newest code for each address and what it's for. */
+  const mail: { email: string; code: string; type: 'email' | 'recovery' }[] = [];
+  const sendCode = (email: string, type: 'email' | 'recovery') => { mail.push({ email, code: String(100000 + mail.length * 7919 % 900000), type }); };
   const db: any[] = [];
   const tokens = new Map<string, string>(); // access token -> user id
   let n = 0;
@@ -29,6 +32,22 @@ export function fakeSupabase() {
       if (u.pathname === '/auth/v1/signup') {
         const { email, password } = r.postDataJSON();
         const usr = { id: `user-${users.size + 1}`, email, password }; users.set(email, usr);
+        if (opts.confirmEmail) { sendCode(email, 'email'); return json(200, session(usr).user); } // no session until the code is entered
+        return json(200, session(usr));
+      }
+      if (u.pathname === '/auth/v1/otp') {
+        const { email } = r.postDataJSON();
+        if (!users.has(email)) users.set(email, { id: `user-${users.size + 1}`, email, password: '' });
+        sendCode(email, 'email'); return json(200, {});
+      }
+      if (u.pathname === '/auth/v1/recover') { const { email } = r.postDataJSON(); if (users.has(email)) sendCode(email, 'recovery'); return json(200, {}); }
+      if (u.pathname === '/auth/v1/resend') { const { email } = r.postDataJSON(); sendCode(email, 'email'); return json(200, {}); }
+      if (u.pathname === '/auth/v1/verify') {
+        const { email, token, type } = r.postDataJSON();
+        const last = [...mail].reverse().find(m => m.email === email);
+        const usr = users.get(email);
+        if (!usr || !last || last.code !== token || (last.type === 'recovery') !== (type === 'recovery')) return json(403, { code: 'otp_expired', msg: 'Token has expired or is invalid', error_code: 'otp_expired' });
+        last.code = 'used';
         return json(200, session(usr));
       }
       if (u.pathname === '/auth/v1/token') {
@@ -39,6 +58,11 @@ export function fakeSupabase() {
           return json(200, session(usr));
         }
         return json(400, { error: 'unsupported' });
+      }
+      if (u.pathname === '/auth/v1/user' && r.method() === 'PUT') {
+        const id = who(h); const usr = [...users.values()].find(x => x.id === id); if (!usr) return json(401, { msg: 'not signed in' });
+        const b = r.postDataJSON(); if (b.password) usr.password = b.password;
+        return json(200, session(usr).user);
       }
       if (u.pathname === '/auth/v1/user') { const id = who(h); const usr = [...users.values()].find(x => x.id === id); return usr ? json(200, session(usr).user) : json(401, { msg: 'not signed in' }); }
       if (u.pathname === '/auth/v1/logout') return route.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*' } });
@@ -66,5 +90,7 @@ export function fakeSupabase() {
       return json(404, { message: `fake supabase: no ${r.method()} ${u.pathname}` });
     });
   }
-  return { db, users, attach };
+  /** The code in the newest email to this address. */
+  const codeFor = (email: string) => [...mail].reverse().find(m => m.email === email)?.code ?? '';
+  return { db, users, mail, codeFor, attach };
 }

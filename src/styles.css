@@ -920,6 +920,7 @@ body.asst-on .me .editor{flex:1 1 40%;min-height:120px}
 .aufield span{display:block;font-size:12px;font-weight:500;color:var(--text2);margin-bottom:6px}
 .aufield input{width:100%;box-sizing:border-box;height:48px;padding:0 14px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--text);font:inherit;font-size:15px}
 .aufield input:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:transparent}
+.aufield input.aucode{font-size:22px;letter-spacing:.3em;font-variant-numeric:tabular-nums}
 .auerr{color:var(--bad,#b3261e);font-size:13px;margin:0 0 10px}
 .auerr:empty{display:none}
 .aubig{width:100%;height:44px;font-size:15px;margin-top:4px}

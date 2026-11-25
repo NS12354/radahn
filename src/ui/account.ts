@@ -5,11 +5,12 @@
 import { $, esc, toast } from './dom';
 import {
   accountsEnabled, currentUser, doneRecovering, inPasswordRecovery, initAccounts, onAccountChange,
-  sendLink, sendReset, setPassword, signIn, signOut, signUp, syncNow, syncState,
+  resendCode, sendCode, sendReset, setPassword, signIn, signOut, signUp, syncNow, syncState, verifyCode,
+  type CodeFor,
 } from '../app/cloud';
 
-type Mode = 'signin' | 'signup' | 'link' | 'reset' | 'newpass' | 'sent';
-let mode: Mode = 'signin', sentTo = '', sentWhat = '';
+type Mode = 'signin' | 'signup' | 'code' | 'reset' | 'newpass' | 'verify';
+let mode: Mode = 'signin', sentTo = '', sentFor: CodeFor = 'signin';
 let onChange: () => void = () => {};
 
 const page = () => document.getElementById('auth');
@@ -27,23 +28,26 @@ function render(err = '') {
   const t = {
     signin: ['Sign in', 'Save your projects to your account and open them on any computer.'],
     signup: ['Create your account', 'Your projects are saved to your account. Only you can see them.'],
-    link: ['Email me a sign-in link', 'No password needed: we send a link that signs you in.'],
-    reset: ['Reset your password', 'We’ll email you a link to choose a new password.'],
+    code: ['Email me a sign-in code', 'No password needed: we email you a 6-digit code that signs you in.'],
+    reset: ['Reset your password', 'We’ll email you a 6-digit code, then you choose a new password.'],
     newpass: ['Choose a new password', 'At least 8 characters.'],
-    sent: ['Check your email', ''],
+    verify: ['Check your email', ''],
   }[mode];
   const email = `<label class="aufield"><span>Email</span><input type="email" name="email" autocomplete="email" required></label>`;
   const pass = (auto: string) => `<label class="aufield"><span>Password</span><input type="password" name="password" autocomplete="${auto}" minlength="8" required></label>`;
-  const body = mode === 'sent'
-    ? `<p class="aulead">${esc(sentWhat)} <b>${esc(sentTo)}</b>. Open it on this device to continue. It can take a minute to arrive; check spam too.</p>
-       <div class="auacts"><button type="button" class="btn" data-go="signin">Back to sign in</button></div>`
+  const body = mode === 'verify'
+    ? `<p class="aulead">We sent a 6-digit code to <b>${esc(sentTo)}</b>. Enter it below. It can take a minute to arrive; check spam too.</p>
+       <label class="aufield"><span>Code</span><input type="text" name="code" class="aucode" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]*" maxlength="10" required></label>
+       <p class="auerr" role="alert">${esc(err)}</p>
+       <button class="btn primary aubig" type="submit">${sentFor === 'reset' ? 'Continue' : 'Verify'}</button>
+       <div class="aulinks"><button type="button" class="aulink" data-resend>Send a new code</button><button type="button" class="aulink" data-go="signin">Back to sign in</button></div>`
     : `<p class="aulead">${t[1]}</p>
        ${mode === 'newpass' ? pass('new-password') : email + (mode === 'signin' ? pass('current-password') : mode === 'signup' ? pass('new-password') : '')}
        <p class="auerr" role="alert">${esc(err)}</p>
-       <button class="btn primary aubig" type="submit">${{ signin: 'Sign in', signup: 'Create account', link: 'Send link', reset: 'Send reset link', newpass: 'Save password' }[mode]}</button>
-       ${mode === 'signin' ? `<div class="aulinks"><button type="button" class="aulink" data-go="reset">Forgot password?</button><button type="button" class="aulink" data-go="link">Email me a sign-in link instead</button></div>
+       <button class="btn primary aubig" type="submit">${{ signin: 'Sign in', signup: 'Create account', code: 'Send code', reset: 'Send code', newpass: 'Save password' }[mode as Exclude<Mode, 'verify'>]}</button>
+       ${mode === 'signin' ? `<div class="aulinks"><button type="button" class="aulink" data-go="reset">Forgot password?</button><button type="button" class="aulink" data-go="code">Email me a sign-in code instead</button></div>
          <div class="aualt">New to Formframe? <button type="button" class="aulink" data-go="signup">Create an account</button></div>` : ''}
-       ${mode === 'signup' || mode === 'link' || mode === 'reset' ? `<div class="aualt"><button type="button" class="aulink" data-go="signin">Back to sign in</button></div>` : ''}`;
+       ${mode === 'signup' || mode === 'code' || mode === 'reset' ? `<div class="aualt"><button type="button" class="aulink" data-go="signin">Back to sign in</button></div>` : ''}`;
   p.innerHTML = `<div class="aucard" role="dialog" aria-modal="true" aria-labelledby="auTitle">
     <div class="aulogo"><i></i>Formframe</div>
     <form novalidate><h1 id="auTitle">${t[0]}</h1>${body}</form>
@@ -51,25 +55,42 @@ function render(err = '') {
     <p class="aufine">Without an account, projects stay in this browser only.</p>
   </div>`;
   const emIn = p.querySelector('input[name=email]') as HTMLInputElement | null; if (emIn && typed) emIn.value = typed;
-  if (err) (p.querySelector('input[name=password]') as HTMLInputElement | null)?.focus();
+  if (err) (p.querySelector('input[name=password], input[name=code]') as HTMLInputElement | null)?.focus();
+  p.querySelector<HTMLButtonElement>('[data-resend]')?.addEventListener('click', async ev => {
+    const b = ev.currentTarget as HTMLButtonElement; b.disabled = true;
+    try { await resendCode(sentTo, sentFor); toast(`New code sent to ${sentTo}`); } catch (e: any) { render(e.message); return; }
+    b.disabled = false;
+  });
   p.querySelectorAll<HTMLElement>('[data-go]').forEach(b => (b.onclick = () => { mode = b.dataset.go as Mode; render(); (p.querySelector('input') as HTMLInputElement | null)?.focus(); }));
   p.querySelector<HTMLElement>('[data-close]')?.addEventListener('click', hideAuth);
   const form = p.querySelector('form')!;
   form.onsubmit = async ev => {
     ev.preventDefault();
     const f = new FormData(form), em = String(f.get('email') ?? '').trim(), pw = String(f.get('password') ?? '');
-    if (mode !== 'newpass' && !/^\S+@\S+\.\S+$/.test(em)) return render('Enter a valid email address.');
+    const code = String(f.get('code') ?? '').replace(/\s+/g, '');
+    if (mode === 'verify' && !/^\d{6,10}$/.test(code)) return render('Enter the 6-digit code from the email.');
+    if (mode !== 'newpass' && mode !== 'verify' && !/^\S+@\S+\.\S+$/.test(em)) return render('Enter a valid email address.');
     if ((mode === 'signin' || mode === 'signup' || mode === 'newpass') && pw.length < 8) return render('Passwords are at least 8 characters.');
     const btn = form.querySelector<HTMLButtonElement>('button[type=submit]')!; btn.disabled = true; btn.textContent = 'One moment…';
     try {
       if (mode === 'signin') { await signIn(em, pw); hideAuth(); toast('Signed in. Your projects are being saved to your account.'); }
-      else if (mode === 'signup') { if (await signUp(em, pw)) { sentTo = em; sentWhat = 'We sent a confirmation link to'; mode = 'sent'; render(); } else { hideAuth(); toast('Account created. Your projects are being saved to it.'); } }
-      else if (mode === 'link') { await sendLink(em); sentTo = em; sentWhat = 'We sent a sign-in link to'; mode = 'sent'; render(); }
-      else if (mode === 'reset') { await sendReset(em); sentTo = em; sentWhat = 'We sent a password reset link to'; mode = 'sent'; render(); }
+      else if (mode === 'signup') { if (await signUp(em, pw)) askCode(em, 'signup'); else { hideAuth(); toast('Account created. Your projects are being saved to it.'); } }
+      else if (mode === 'code') { await sendCode(em); askCode(em, 'signin'); }
+      else if (mode === 'reset') { await sendReset(em); askCode(em, 'reset'); }
+      else if (mode === 'verify') {
+        await verifyCode(sentTo, code, sentFor);
+        if (sentFor === 'reset') { mode = 'newpass'; render(); }
+        else { hideAuth(); toast(sentFor === 'signup' ? 'Account confirmed. Your projects are being saved to it.' : 'Signed in. Your projects are being saved to your account.'); }
+      }
       else if (mode === 'newpass') { await setPassword(pw); doneRecovering(); hideAuth(); toast('Password changed. You’re signed in.'); }
     } catch (e: any) { render(e.message); }
   };
   p.onkeydown = e => { e.stopPropagation(); if (e.key === 'Escape' && mode !== 'newpass') hideAuth(); };
+}
+
+function askCode(email: string, what: CodeFor) {
+  sentTo = email; sentFor = what; mode = 'verify'; render();
+  (page()?.querySelector('input[name=code]') as HTMLInputElement | null)?.focus();
 }
 
 // ---- account button (home screen and studio top bar)

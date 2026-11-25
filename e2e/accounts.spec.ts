@@ -60,7 +60,7 @@ test('sign up, projects save to the account, open on another computer, sign out 
   await c1.close(); await c2.close();
 });
 
-test('the sign-in page can be skipped, and offers a link and a password reset', async ({ browser }) => {
+test('the sign-in page can be skipped, and offers a code and a password reset', async ({ browser }) => {
   const fake = fakeSupabase();
   const c = await browser.newContext(); await fake.attach(c);
   const page = await c.newPage();
@@ -70,10 +70,56 @@ test('the sign-in page can be skipped, and offers a link and a password reset', 
   await page.click('#auth [data-go=reset]');
   await expect(page.locator('#auth h1')).toHaveText('Reset your password');
   await page.click('#auth [data-go=signin]');
-  await page.click('#auth [data-go=link]');
-  await expect(page.locator('#auth h1')).toHaveText('Email me a sign-in link');
+  await page.click('#auth [data-go=code]');
+  await expect(page.locator('#auth h1')).toHaveText('Email me a sign-in code');
   await page.click('#auth [data-close]');
   await expect(page.locator('#auth')).toBeHidden();
   await expect(page.locator('#home')).toBeVisible();
+  await c.close();
+});
+
+test('emails carry 6-digit codes: confirm a sign-up, sign in without a password, reset a password', async ({ browser }) => {
+  test.setTimeout(90_000);
+  const fake = fakeSupabase({ confirmEmail: true });
+  const c = await browser.newContext(); await fake.attach(c);
+  const page = await c.newPage(); const errs = errors(page);
+  await home(page);
+  const enter = async (code: string) => { await page.fill('#auth input[name=code]', code); await page.click('#auth button[type=submit]'); };
+
+  // sign up: the account waits for the code from the email
+  await signInWith(page, 'bo@example.com', 'first password', true);
+  await expect(page.locator('#auth h1')).toHaveText('Check your email');
+  await expect(page.locator('#auth .aulead')).toContainText('bo@example.com');
+  await enter('000000');
+  await expect(page.locator('#auth .auerr')).toContainText('wrong or has expired');
+  await enter(fake.codeFor('bo@example.com'));
+  await expect(page.locator('#auth')).toBeHidden();
+  await expect(page.locator('#hAccount')).toHaveText('bo');
+  await page.click('#hAccount'); await page.click('#acMenu [data-a=out]');
+  await expect(page.locator('#hAccount')).toHaveText('Sign in');
+
+  // sign in with a code instead of the password
+  await page.click('#hAccount');
+  await page.click('#auth [data-go=code]');
+  await page.fill('#auth input[name=email]', 'bo@example.com');
+  await page.click('#auth button[type=submit]');
+  await expect(page.locator('#auth input[name=code]')).toBeFocused();
+  await enter(fake.codeFor('bo@example.com'));
+  await expect(page.locator('#hAccount')).toHaveText('bo');
+  await page.click('#hAccount'); await page.click('#acMenu [data-a=out]');
+
+  // forgot password: code, then choose a new one, then it works
+  await page.click('#hAccount');
+  await page.click('#auth [data-go=reset]');
+  await page.fill('#auth input[name=email]', 'bo@example.com');
+  await page.click('#auth button[type=submit]');
+  await expect(page.locator('#auth button[type=submit]')).toHaveText('Continue');
+  await enter(fake.codeFor('bo@example.com'));
+  await expect(page.locator('#auth h1')).toHaveText('Choose a new password');
+  await page.fill('#auth input[name=password]', 'second password');
+  await page.click('#auth button[type=submit]');
+  await expect(page.locator('#auth')).toBeHidden();
+  expect(fake.users.get('bo@example.com')!.password).toBe('second password');
+  expect(errs).toEqual([]);
   await c.close();
 });
