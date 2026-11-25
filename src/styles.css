@@ -931,3 +931,5 @@ body.asst-on .me .editor{flex:1 1 40%;min-height:120px}
 .auskip{display:block;margin:18px auto 4px}
 .aufine{text-align:center;font-size:12px;color:var(--dim);margin:0}
 @media (max-width:480px){.aucard{padding:28px 20px 20px;border-radius:20px}}
+.rpatt{border:0;background:var(--sel);color:var(--accent);font:inherit;font-size:11px;font-weight:500;border-radius:999px;padding:2px 8px;margin-left:4px;cursor:pointer}
+.rpatt:hover{filter:brightness(.95)}

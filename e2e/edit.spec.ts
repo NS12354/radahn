@@ -110,3 +110,34 @@ test('the Claude chat is saved with the project and comes back after a reload', 
   await page.click('#tabAsst');
   await expect(page.locator('#asLog')).toContainText('Ask Claude about this project');
 });
+
+test('electronics added to a robot appear loose in its world, can be dragged, and attached', async ({ page }) => {
+  const errs = errors(page);
+  await home(page);
+  await page.click('#hRobots button[data-k="arm"]');
+  await page.waitForFunction(() => !!(window as any).formframe?.projectId);
+  await mode(page, 'elec');
+  await page.click('#libList button[data-t="oled"]');
+  await mode(page, 'design');
+  const loose = () => page.evaluate(() => { const w = (window as any).formframe.project.product.built.robot.world; return w.obstacles.map((o: any, i: number) => ({ i, name: o.name, comp: o.comp, pos: o.pos })).filter((o: any) => o.comp); });
+  await expect.poll(async () => (await loose()).length).toBe(1);
+  const [o] = await loose();
+  // listed with the blocks, with an Attach button
+  const chip = page.locator('#robotPanel .rpobj', { hasText: o.name });
+  await expect(chip).toBeVisible();
+  await expect(chip.locator('.rpatt')).toBeVisible();
+  // drag it like any object
+  await page.locator('#coach [data-x], #coach .x, #coachClose').first().click().catch(() => {}); // the coach card can cover the floor
+  const pt = await objPoint(page, 'studio', o.i);
+  if (pt) { await dragBy(page, pt, 60); await expect.poll(async () => (await loose())[0].pos).not.toEqual(o.pos); }
+  // attach: it becomes part of the robot and leaves the world
+  await chip.locator('.rpatt').click();
+  await expect.poll(async () => (await loose()).length).toBe(0);
+  const mounted = await page.evaluate(uid => (window as any).formframe.project.product.built.parts.filter((p: any) => p.comp === uid).map((p: any) => ({ parent: p.parent, attached: p.attached })), o.comp);
+  expect(mounted.length).toBeGreaterThan(0);
+  expect(mounted.every((m: any) => m.attached && m.parent)).toBe(true);
+  // undo puts it back on the floor
+  await page.keyboard.press('ControlOrMeta+z');
+  await expect.poll(async () => (await loose()).length).toBe(1);
+  expect(errs).toEqual([]);
+});

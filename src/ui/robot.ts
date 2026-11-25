@@ -5,6 +5,7 @@
  * robot lives in, mass and servo supply, reset, URDF export/import, ROS 2 bridge.
  */
 import type { App } from './app';
+import { attachLoose } from '../app/loose';
 import { $, el, esc, toast, download } from './dom';
 import { BuiltProduct } from '../scene/built';
 import { RobotSim, isRobot } from '../app/robot';
@@ -75,6 +76,9 @@ export const robotSim = () => sim;
 
 function spec() { const m = model()!; return (m.robot ??= { kind: 'custom', mobile: 'fixed', mass: 500 }); }
 
+/** Re-draw the robot panel (e.g. after new parts appear loose in the world). */
+export function renderRobotPanel() { if (sim) render(); }
+
 function render() {
   const panel = document.getElementById('robotPanel'); if (!panel) return;
   if (!sim) { panel.style.display = 'none'; return; }
@@ -95,7 +99,7 @@ function render() {
       <div class="rprow"><label>World</label><select id="rpWorld">${Object.entries(WORLDS).map(([k, w]) => `<option value="${k}" ${k === worldKind(sp.world) ? 'selected' : ''}>${w.label}</option>`).join('')}</select>
         <label title="Rigid-body physics (Rapier): gravity, mass, friction, collisions and servo torque limits">Physics</label><select id="rpPhys"><option value="1" ${sp.physics !== false ? 'selected' : ''}>Realistic</option><option value="" ${sp.physics !== false ? '' : 'selected'}>Off (passes through things)</option></select>
         <label>Moves on</label><select id="rpMobile">${[['fixed', 'Bolted down'], ['wheels', 'Wheels'], ['legs', 'Legs']].map(([k, l]) => `<option value="${k}" ${sp.mobile === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
-      ${sp.world ? `<div class="rprow rpobjs"><label>Objects</label>${sp.world.obstacles.map((o, i) => `<span class="rpobj" title="${esc(objTitle(o))}"><i style="background:${esc(o.color ?? '#c8743a')}"></i>${esc(objName(o))}<select class="rpmat" data-i="${i}" aria-label="What the ${esc(objName(o).toLowerCase())} is made of">${(Object.keys(MATERIALS) as ObstacleMaterial[]).map(k => `<option value="${k}" ${materialOf(o) === k ? 'selected' : ''}>${MATERIALS[k].label}</option>`).join('')}</select><button class="rpdel" data-i="${i}" title="Remove ${esc(objName(o).toLowerCase())}" aria-label="Remove ${esc(objName(o).toLowerCase())}">×</button></span>`).join('') || '<span class="dim">None</span>'}<button class="btn" id="rpAddBlock" title="Add a 20 mm block the gripper can pick up">+ Block</button><button class="btn" id="rpAddBox" title="Add a cardboard box for the robot to push">+ Box</button></div>` : ''}
+      ${sp.world ? `<div class="rprow rpobjs"><label>Objects</label>${sp.world.obstacles.map((o, i) => `<span class="rpobj" title="${esc(objTitle(o))}"><i style="background:${esc(o.color ?? '#c8743a')}"></i>${esc(objName(o))}<select class="rpmat" data-i="${i}" aria-label="What the ${esc(objName(o).toLowerCase())} is made of">${(Object.keys(MATERIALS) as ObstacleMaterial[]).map(k => `<option value="${k}" ${materialOf(o) === k ? 'selected' : ''}>${MATERIALS[k].label}</option>`).join('')}</select>${o.comp ? `<button class="rpatt" data-i="${i}" title="Mount the ${esc(objName(o))} on the robot where it lies. It then moves with the robot; fine-tune its spot in Design.">Attach</button>` : ''}<button class="rpdel" data-i="${i}" title="Remove ${esc(objName(o).toLowerCase())}" aria-label="Remove ${esc(objName(o).toLowerCase())}">×</button></span>`).join('') || '<span class="dim">None</span>'}<button class="btn" id="rpAddBlock" title="Add a 20 mm block the gripper can pick up">+ Block</button><button class="btn" id="rpAddBox" title="Add a cardboard box for the robot to push">+ Box</button></div>` : ''}
       <div class="rprow adv"><label>Mass</label><input type="number" id="rpMass" value="${sp.mass}" min="10" step="50"> g
         ${becs.length ? `<label>Servo supply</label><input type="number" id="rpAmps" value="${becs[0].props?.amps ?? 5}" min="1" step="1"> A` : ''}</div>
       <div class="rpbtns"><button class="btn" id="rpReset" data-ico="reset">Reset position</button><button class="btn adv" id="rpUrdf" title="Save a URDF for ROS, RViz and Gazebo">Export URDF</button><button class="btn adv" id="rpImp" title="Load a robot from a URDF file">Import URDF…</button></div>
@@ -121,6 +125,15 @@ function render() {
   panel.querySelectorAll<HTMLElement>('.rpdel').forEach(b => (b.onclick = () => {
     const obs = sp.world!.obstacles, [o] = obs.splice(+b.dataset.i!, 1);
     A.changed('product'); render(); toast(`Removed the ${objName(o).toLowerCase()}`); track('model', `Robot world: removed the ${objName(o).toLowerCase()}`);
+  }));
+  panel.querySelectorAll<HTMLElement>('.rpatt').forEach(b => (b.onclick = () => {
+    if (firmwareRunning()) { toast('Stop the code to attach parts'); return; }
+    const o = sp.world!.obstacles[+b.dataset.i!], name = objName(o);
+    const made = attachLoose(A.project, +b.dataset.i!, sim!.body.m);
+    if (!made) { toast(`Couldn't attach the ${name.toLowerCase()}`); return; }
+    A.changed('product'); render();
+    toast(`Attached the ${name} to the robot. Fine-tune its spot in Design (drag its handles).`);
+    track('model', `Attached the ${name} to the robot`);
   }));
   $('#rpAddBlock').onclick = () => {
     const obs = sp.world!.obstacles, taken = (x: number, z: number) => obs.some(o => Math.hypot(o.pos[0] - x, o.pos[1] - z) < 30);

@@ -17,7 +17,7 @@ import { blankProject, defaultProject, hasStateMachine, parseProject, serializeP
 import { deleteProject, getMeta, loadProject, migrateLegacy, newProjectId, saveProject, journalWrite, journalClear, journalRecover } from './app/store';
 import { EmptyProduct } from './scene/empty';
 import { BuiltProduct } from './scene/built';
-import { initRobot, robotFrame } from './ui/robot';
+import { initRobot, robotFrame, renderRobotPanel } from './ui/robot';
 import { initCrash, crashFrame } from './ui/crash';
 import { initViewTools } from './ui/viewtools';
 import { initCoach, coachProject, showCoach } from './ui/coach';
