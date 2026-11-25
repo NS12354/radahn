@@ -49,7 +49,7 @@ const ls = { get: (k: string) => { try { return localStorage.getItem(k); } catch
  * Never another account's leftovers, and never someone else's guest work later on.
  */
 function adoptable(id: string, firstAccountHere: boolean) { return ls.get(GUEST_FIRST) === id || firstAccountHere; }
-let signOutHooks: { save?: () => Promise<void>; close?: () => Promise<void> | void } = {};
+let signOutHooks: { save?: () => Promise<boolean>; close?: () => Promise<void> | void } = {};
 export function onSignOut(h: typeof signOutHooks) { signOutHooks = h; }
 export type SyncState = 'off' | 'idle' | 'saving' | 'offline' | 'error';
 let state: SyncState = 'off', stateMsg = '';
@@ -209,7 +209,7 @@ export async function setPassword(password: string) {
 }
 export async function signOut() {
   const c = client(), uid = user?.id; if (!c) return;
-  await signOutHooks.save?.().catch(() => { /* still try to send what's queued */ });
+  if ((await signOutHooks.save?.().catch(() => true)) === false) return; // asked to save first, and chose Cancel
   for (let i = 0; i < 3 && pending.size; i++) await flushUploads().catch(() => { /* best effort */ }); // saves that land while we sign out
   const unsent = pending.size > 0;
   if (unsent && !window.confirm?.('Some changes haven’t reached your account yet. Sign out anyway? They stay in this browser.')) return;

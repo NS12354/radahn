@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { newProject, mode } from './helpers';
+import { newProject, mode, save } from './helpers';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -23,6 +23,7 @@ test('Add from a link reads a product page and adds a wireable part', async ({ p
     await page.click('#prAdd');
     const comps = await page.evaluate(() => (window as any).formframe.project.electronics.comps.map((c: any) => c.pins));
     expect(comps).toEqual([{ SDA: expect.any(Number), SCL: expect.any(Number) }]);
+    await save(page);
     await page.reload(); // the part travels with the project
     await page.locator('.pcard').first().click();
     await expect.poll(() => page.evaluate(() => Object.keys((window as any).formframe?.project?.electronics?.custom ?? {}).length)).toBe(1);

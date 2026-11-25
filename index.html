@@ -41,6 +41,7 @@
     </div>
   </div>
   <input class="fname" id="pname" spellcheck="false" aria-label="Project name">
+  <button class="btn clean" id="bSave" title="Save this project (Ctrl+S)" disabled>Saved</button>
   <button class="health none" id="bHealth"><i></i><span>Not tested yet</span></button>
   <button class="btn runtop" id="bRunTop" title="Run your code on the virtual board (works from any tab)" data-ico="play">Run</button>
   <div class="seg" id="modes">
@@ -232,6 +233,7 @@
     <button class="logo" id="swHome" title="All projects and scenes"><i></i>Formframe</button>
     <span class="swkind">Scene</span>
     <input type="text" id="swName" aria-label="Scene name" spellcheck="false">
+    <button class="btn clean" id="swSave" title="Save this scene (Ctrl+S)" disabled>Saved</button>
     <label class="swworld">World <select id="swWorld"></select></label>
     <label class="swworld" title="Realistic: one rigid-body world for the whole scene (gravity, mass, friction, servo torque; robots and objects collide)">Physics <select id="swPhys"><option value="1">Realistic</option><option value="">Off (passes through things)</option></select></label>
     <div class="swrun">

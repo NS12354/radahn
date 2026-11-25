@@ -10,6 +10,11 @@ export async function home(page: Page, opts: { simple?: boolean; guest?: boolean
   await page.goto('/');
   await expect(page.locator('#home')).toBeVisible();
 }
+/** Save the open project (or scene) with the Save button, and wait until it says Saved. */
+export async function save(page: Page, which: '#bSave' | '#swSave' = '#bSave') {
+  await page.click(which);
+  await expect(page.locator(which)).toHaveText('Saved');
+}
 /** Start a project from the home screen. */
 export async function newProject(page: Page, kind: 'blank' | 'example') {
   await home(page);

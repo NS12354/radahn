@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { newProject, mode, errors } from './helpers';
+import { newProject, mode, errors, save } from './helpers';
 
 test('Plan tab tracks activity and milestones, and applies an AI update', async ({ page }) => {
   const errs = errors(page);
@@ -38,7 +38,7 @@ test('Plan tab tracks activity and milestones, and applies an AI update', async 
   await page.click('#plUndo');
   await expect(page.locator('#plCol-done .plcard')).toHaveCount(0);
   // the plan is saved with the project
-  await page.click('#bHome'); await page.reload(); await page.locator('.pcard').first().click(); await mode(page, 'plan');
+  await save(page); await page.click('#bHome'); await page.reload(); await page.locator('.pcard').first().click(); await mode(page, 'plan');
   await expect(page.locator('#plCol-doing .plcard', { hasText: 'Design the wall plate' })).toHaveCount(1);
   expect(errs).toEqual([]);
 });

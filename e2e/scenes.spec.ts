@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { home, errors } from './helpers';
+import { home, errors, save } from './helpers';
 
 const twin = (page: any) => page.evaluate(() => { const t = (globalThis as any).__scene?.(); return t ? t.robots.map((r: any) => ({ name: r.def.name, status: r.status, x: r.sim.body.m.elements[12], z: r.sim.body.m.elements[14] })) : null; });
 
@@ -32,6 +32,7 @@ test('scenes: several named robots in one world, run together, saved and reopene
   await page.evaluate(() => (document.querySelector('#swStopAll') as HTMLButtonElement).click());
   await expect.poll(async () => (await twin(page))!.every((r: any) => r.status === 'stopped')).toBe(true);
   // back home: the scene is listed, and reopening it brings the same robots back
+  await save(page, '#swSave');
   await page.click('#swHome');
   await expect(page.locator('#home')).toBeVisible();
   await expect(page.locator('#sceneGrid .pcard', { hasText: 'Cell 1' })).toContainText('3 robots');
@@ -57,6 +58,7 @@ test('scenes: realistic physics puts every robot in one shared world, and is sav
   const y = (await phys())!.blockY;
   expect(y).toBeGreaterThan(8); expect(y).toBeLessThan(12); // the block rests on the floor
   await page.screenshot({ path: 'test-results/scene-physics.png' });
+  await save(page, '#swSave');
   await page.click('#swHome');
   await page.locator('#sceneGrid .pcard', { hasText: 'Physics cell' }).click();
   await expect.poll(async () => (await phys())?.robots, { timeout: 60_000 }).toBe(2);

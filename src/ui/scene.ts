@@ -12,12 +12,12 @@
  * it is opened again.
  */
 import * as THREE from 'three';
-import { $, el, esc, toast } from './dom';
+import { $, askSave, el, esc, toast } from './dom';
 import { Viewport } from '../scene/viewport';
 import { BuiltProduct, drawWorld } from '../scene/built';
 import { displayComps } from '../app/screenpart';
 import { Twin, type TwinRobot } from '../app/twin';
-import { SCENE_WORLDS, freeSpot, newSceneRobotId, saveScene, uniqueName, type Scene, type SceneRobot } from '../app/scene';
+import { SCENE_WORLDS, freeSpot, newSceneRobotId, saveScene, serializeScene, uniqueName, type Scene, type SceneRobot } from '../app/scene';
 import { listProjects, loadProject, newProjectId, saveProject } from '../app/store';
 import { isRobot } from '../app/robot';
 import { ARM_PICK, ARM_PLACE, ROBOT_KINDS, pickBlock, robotProject, type RobotKind } from '../app/robots';
@@ -70,6 +70,7 @@ export const inScene = () => document.body.classList.contains('at-scene');
 export function initScene(h: SceneHost) {
   host = h;
   $('#swHome').onclick = () => close();
+  $('#swSave').onclick = () => void saveSceneNow();
   ($('#swName') as HTMLInputElement).oninput = e => { if (scene) { scene.name = (e.target as HTMLInputElement).value; changed(); } };
   $('#swWorld').innerHTML = Object.entries(SCENE_WORLDS).map(([k, w]) => `<option value="${k}">${esc(w.label)}</option>`).join('') + '<option value="custom" hidden>Custom</option>';
   $('#swWorld').onchange = e => {
@@ -104,9 +105,29 @@ export async function openScene(sceneId: string, s: Scene) {
   frameAll();
   renderLog();
   clearTimeout(hist.t); hist.undo = []; hist.redo = []; hist.cur = JSON.stringify(s); hist.t = 0;
+  savedText = serializeScene(s); updateSave(); // opened: nothing to save until you change something
 }
 /** Signing out: save the open scene now, then (once signed out) close it without saving again. */
-export async function saveOpenScene() { clearTimeout(saveT); if (scene && id) await saveScene(id, scene, thumb()).catch(() => {}); }
+/** The scene as last saved (or opened): anything different is an unsaved edit. */
+let savedText = '';
+export const sceneDirty = () => !!scene && !!id && serializeScene(scene) !== savedText;
+function updateSave() {
+  const b = $('#swSave') as HTMLButtonElement, d = sceneDirty();
+  b.disabled = !d; b.classList.toggle('clean', !d); b.textContent = d ? 'Save' : 'Saved';
+  b.title = d ? 'Save your changes (Ctrl+S)' : 'All changes saved';
+}
+export async function saveSceneNow() { if (sceneDirty()) await flush(); toast('Saved'); }
+/** Before leaving the open scene: ask about unsaved edits. False means stay. */
+async function confirmLeave(): Promise<boolean> {
+  clearTimeout(saveT);
+  if (!sceneDirty()) return true;
+  const r = await askSave(scene!.name || 'this scene');
+  if (r === 'cancel') return false;
+  if (r === 'save') await flush(); else savedText = serializeScene(scene!);
+  return true;
+}
+/** Signing out: ask about unsaved edits to the open scene. False means stay signed in. */
+export async function saveOpenScene() { return document.body.classList.contains('at-scene') ? confirmLeave() : true; }
 export async function forgetOpenScene() {
   if (!document.body.classList.contains('at-scene')) return;
   clearTimeout(saveT); id = ''; scene = null;
@@ -116,8 +137,8 @@ export async function forgetOpenScene() {
   host.studio.paused = false;
 }
 async function close() {
+  if (!(await confirmLeave())) return;
   await twin?.stopAll();
-  flush();
   document.body.classList.remove('at-scene');
   if (vp) vp.paused = true;
   host.studio.paused = false;
@@ -353,12 +374,15 @@ function renderLog() {
 // ------------------------------------------------------------------ side panel
 function select(rid: string | null) { selected = rid; renderSide(); }
 function changed() {
-  clearTimeout(saveT); saveT = setTimeout(flush, 500);
+  const b = $('#swSave') as HTMLButtonElement; b.disabled = false; b.classList.remove('clean'); b.textContent = 'Save'; // at once; checked properly below
+  clearTimeout(saveT); saveT = setTimeout(updateSave, 250);
   clearTimeout(hist.t); hist.t = setTimeout(snapshot, 500);
 }
-function flush() {
+async function flush() {
   clearTimeout(saveT); if (!scene || !id) return;
-  saveScene(id, scene, thumb()).catch(() => toast("Couldn't save the scene"));
+  const text = serializeScene(scene);
+  try { await saveScene(id, scene, thumb()); savedText = text; } catch { toast("Couldn't save the scene"); }
+  updateSave();
 }
 function thumb(): string | undefined {
   if (!vp || !views.length) return undefined;
@@ -419,7 +443,7 @@ async function act(x: string, rid: string, v?: View) {
   const s = scene!;
   if (x === 'run' && v) return runOne(v.robot);
   if (x === 'stop' && v) { await twin!.stop(v.robot); renderSide(); return; }
-  if (x === 'edit' && v) { await twin!.stopAll(); flush(); document.body.classList.remove('at-scene'); vp!.paused = true; host.studio.paused = false; host.openProject(v.robot.def.project); return; }
+  if (x === 'edit' && v) { if (!(await confirmLeave())) return; await twin!.stopAll(); document.body.classList.remove('at-scene'); vp!.paused = true; host.studio.paused = false; host.openProject(v.robot.def.project); return; }
   if (x === 'dup' && v) {
     const d = v.robot.def, def: SceneRobot = { id: newSceneRobotId(), name: uniqueName(s, d.name.replace(/ \d+$/, '')), project: d.project, pose: { ...freeSpot(s), yaw: d.pose.yaw } };
     s.robots.push(def); addView(def, v.robot.project); selected = def.id; changed(); renderSide(); return;

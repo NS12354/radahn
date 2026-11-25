@@ -26,7 +26,7 @@ import { robotProject, type RobotKind } from './app/robots';
 import { ElectronicsView } from './scene/electronics';
 import { gizmoBusy, initModeler, newBuiltModel, runAutoBuild, syncGizmo } from './ui/modeler';
 import { atHome, initHome, renderHome, showHome, hideHome } from './ui/home';
-import { forgetOpenScene, initScene, inScene, openScene, saveOpenScene, sceneHistory } from './ui/scene';
+import { forgetOpenScene, initScene, inScene, openScene, saveOpenScene, saveSceneNow, sceneDirty, sceneHistory } from './ui/scene';
 import { deleteScene, loadScene, newScene, newSceneId, saveScene } from './app/scene';
 import { endTour, initTour, startTour, tourSeen, touring } from './ui/tour';
 import { listen, modelerUrl, post } from './app/sync';
@@ -39,7 +39,7 @@ import { initClaude, claudeFilesChanged, claudeContextChanged, closeClaude } fro
 import { initPlan, render as renderPlan, resetPlanUndo } from './ui/plan';
 import { track } from './ui/track';
 import type { App, Mode } from './ui/app';
-import { $, $$, b64decode, b64encode, closeModal, copyText, download, modal, toast } from './ui/dom';
+import { $, $$, askSave, b64decode, b64encode, closeModal, copyText, download, modal, toast } from './ui/dom';
 import { initDesign, renderDesign } from './ui/design';
 import { armIdle, drawGraph, fire, initProto, redrawScreen, renderLive, renderScreens, renderTrs, stopIdle } from './ui/proto';
 import { drawWires, elecDial, elecFrame, elecPress, initElec, renderElec, stopElec, firmwareRunning } from './ui/elec';
@@ -48,6 +48,19 @@ import { exportFirmware } from './proto/stateMachine';
 
 const BASE = import.meta.env.BASE_URL;
 /** Where a guest's own copy of The First Step is remembered (see firstStep). */
+/**
+ * The parts of a project that count as edits: everything except the simulated room
+ * (it drifts while code runs) and the automatic activity history (runs, last run, milestones).
+ */
+function editText(p: Project) {
+  const o = JSON.parse(serializeProject(p));
+  delete o.env;
+  if (o.plan) {
+    delete o.plan.log; delete o.plan.reached; delete o.plan.lastRun;
+    if (!o.plan.tasks?.length && Object.keys(o.plan).every(k => k === 'tasks')) delete o.plan; // no tasks: same as no plan
+  }
+  return JSON.stringify(o);
+}
 const guestFirstStep = () => { try { return localStorage.getItem(GUEST_FIRST); } catch { return null; } };
 
 const HINT_ELEC = '<b>Electronics</b> · wire a board and press <b>Run</b>: the parts on the 3D model follow the running code';
@@ -76,7 +89,9 @@ class FormframeApp implements App {
   private devT: any = null;
   private hT: any = null;
   private clT: any = null;
-  private saveT: any = null;
+  private saveT: any = null; // refreshes the Save button after edits
+  /** The project as last saved (or opened): anything different is an unsaved edit. */
+  private savedText = '';
   /** Undo / redo: serialized project snapshots, taken once changes settle (a drag or a burst of typing is one step). */
   private hist = { undo: [] as string[], redo: [] as string[], cur: '', t: null as any, restoring: false };
   private dirHandle: any = null;
@@ -133,7 +148,7 @@ class FormframeApp implements App {
       deleteScene: async (sid, name) => { if (!window.confirm?.(`Delete the scene "${name}"? The robot projects in it are kept.`)) return; await deleteScene(sid); renderHome(); },
     });
     onSignOut({
-      save: async () => { if (this.projectId) await this.flush(false, !!this.saveT); await saveOpenScene(); },
+      save: async () => (await saveOpenScene()) && this.confirmClose(),
       // signed out: close what was open without saving it again (the account's copies are about to leave this browser)
       close: async () => {
         await forgetOpenScene();
@@ -164,7 +179,8 @@ class FormframeApp implements App {
     if (what === 'electronics' && syncLooseParts(this.project)) { this.changed('product'); renderRobotPanel(); } // new parts appear loose in a robot's world
     if (what === 'electronics') { clearTimeout(this.clT); this.clT = setTimeout(() => { claudeFilesChanged(); claudeContextChanged(); }, 250); }
     clearTimeout(this.saveT);
-    this.saveT = setTimeout(() => this.flush(), 400);
+    if (this.projectId) { const b = $('#bSave') as HTMLButtonElement; b.disabled = false; b.classList.remove('clean'); b.textContent = 'Save'; } // at once; checked properly below
+    this.saveT = setTimeout(() => { this.saveT = null; this.updateSave(); }, 250);
     if (!this.hist.restoring) { clearTimeout(this.hist.t); this.hist.t = setTimeout(() => this.snapshot(), 500); }
   }
 
@@ -215,8 +231,30 @@ class FormframeApp implements App {
     if (!atHome() && (forceThumb || Date.now() - this.lastThumb > 5000)) { thumb = this.thumbnail(); this.lastThumb = Date.now(); }
     const b = this.project.product.built;
     if (b) { const sig = JSON.stringify({ ...b, rev: 0 }); if (sig !== this.builtSig) { b.rev = (b.rev ?? 0) + 1; this.builtSig = sig; } }
-    try { await saveProject(this.projectId, this.project, thumb, edited); journalClear(this.projectId); post({ type: 'saved', id: this.projectId }); this.blender.changed(); }
+    const text = editText(this.project);
+    try { await saveProject(this.projectId, this.project, thumb, edited); this.savedText = text; journalClear(this.projectId); post({ type: 'saved', id: this.projectId }); this.blender.changed(); }
     catch (e: any) { toast('Could not save: ' + (e?.message ?? e)); }
+    this.updateSave();
+  }
+  /** Unsaved edits in the open project (compared with what was last saved or opened). */
+  isDirty() { return !!this.projectId && editText(this.project) !== this.savedText; }
+  private updateSave() {
+    const b = $('#bSave') as HTMLButtonElement, d = this.isDirty();
+    b.hidden = !this.projectId; b.disabled = !d; b.classList.toggle('clean', !d);
+    b.textContent = d ? 'Save' : 'Saved';
+    b.title = d ? 'Save your changes (Ctrl+S)' : 'All changes saved';
+  }
+  /** Save the open project now, if it has unsaved edits. */
+  async save() { if (!this.projectId) { toast('This is a scratch copy for the tour; it isn’t saved'); return; } if (this.isDirty()) await this.flush(true); toast('Saved'); }
+  /** Before closing the open project: ask about unsaved edits. False means stay. */
+  async confirmClose(): Promise<boolean> {
+    clearTimeout(this.saveT); this.saveT = null;
+    if (!this.isDirty()) return true;
+    const r = await askSave(this.project.name);
+    if (r === 'cancel') return false;
+    if (r === 'save') await this.flush(true);
+    else this.savedText = editText(this.project); // not saved, and not asked again
+    return true;
   }
 
   /** The modeler window saved a newer built model: show it here without reframing the camera. */
@@ -225,12 +263,14 @@ class FormframeApp implements App {
     const p = await loadProject(id); const nb = p?.product.built;
     if (!p || !nb || id !== this.projectId) return;
     if ((nb.rev ?? 0) <= (this.project.product.built?.rev ?? -1)) return;
-    if (this.saveT) await this.flush(false); // keep our own pending edits (name, wiring…) before taking the model
+    const wasClean = !this.isDirty();
     this.project.product.built = nb; this.project.product.source = 'built';
     this.builtSig = JSON.stringify({ ...nb, rev: 0 });
     if (this.product instanceof BuiltProduct) { this.product.model = nb; this.product.build(); this.selected = null; renderDesign(this); }
     else { await this.rebuildProduct(); renderDesign(this); }
     this.refreshElectronics();
+    if (wasClean) this.savedText = editText(this.project); // the modeler already saved it
+    this.updateSave();
     localChanged('project', id); // the modeler window saved it, but only this window talks to the account
     track('model', 'Edited the model in the 3D modeler');
     this.blender.changed();
@@ -260,7 +300,7 @@ class FormframeApp implements App {
   async openBlender() {
     if (!this.projectId) { toast('Open a saved project first'); return; }
     if (!this.project.product.built) { this.project.product.built = newBuiltModel(); this.project.product.source = 'built'; await this.rebuildProduct(); renderDesign(this); }
-    await this.flush(false, !!this.saveT);
+    if (this.isDirty()) await this.flush(false);
     try { const r = await this.blender.open(); toast(r.already ? 'Linked with the open Blender window' : 'Starting Blender with the Formframe link…'); }
     catch (e: any) { toast(e.message); }
   }
@@ -270,7 +310,7 @@ class FormframeApp implements App {
     if (!this.projectId) { toast('Save this as a project first (the tour runs on a scratch copy)'); return; }
     const w = window.open(`${BASE}device.html?project=${encodeURIComponent(this.projectId)}`, 'ffdevice-' + this.projectId);
     if (!w) toast('The browser blocked the window. Allow pop-ups for this site.');
-    this.flush(false, !!this.saveT);
+    if (this.isDirty()) this.flush(false); // that window works on the saved project
   }
 
   private async openModeler() {
@@ -278,7 +318,7 @@ class FormframeApp implements App {
     // open first: browsers only allow popups straight from the click, not after an await
     const w = window.open(modelerUrl(BASE, this.projectId), 'ffmodeler-' + this.projectId);
     if (!w) toast('The browser blocked the modeler window. Allow pop-ups for this site.');
-    this.flush(true, !!this.saveT); // the modeler reloads when this save lands
+    if (this.isDirty()) this.flush(true); // the modeler works on the saved project
   }
 
   private thumbnail(): string | null {
@@ -298,6 +338,7 @@ class FormframeApp implements App {
   /** Open a project from the library; false when it didn't open. */
   private async openProject(id: string): Promise<boolean> {
     if (id !== guestFirstStep() && needAccount()) return false;
+    if (id !== this.projectId && !(await this.confirmClose())) return false;
     try {
       const meta = await getMeta(id);
       if (meta?.owner && meta.owner !== currentUser()?.id) { toast('That project belongs to another account'); renderHome(); return false; }
@@ -310,6 +351,7 @@ class FormframeApp implements App {
   }
   /** Add a project to the library and open it. */
   private async createProject(p: Project, msg: string) {
+    if (!(await this.confirmClose())) return null;
     const id = newProjectId();
     await saveProject(id, p, null);
     await this.load(p, msg, id);
@@ -324,6 +366,7 @@ class FormframeApp implements App {
     const m = had ? await getMeta(had) : undefined;
     if (m && !m.owner) { await this.openProject(had!); return; } // still the guest's (not an account's copy)
     const id = await this.createProject(defaultProject(), 'The First Step');
+    if (!id) return;
     try { localStorage.setItem(GUEST_FIRST, id); } catch { /* private window: a fresh copy next time */ }
   }
   private async duplicateProject(id: string) {
@@ -340,15 +383,16 @@ class FormframeApp implements App {
     renderHome();
   }
   async goHome() {
+    if (!(await this.confirmClose())) return;
     if (touring()) endTour();
     if (document.body.classList.contains('present')) $('#bPresent').click();
-    await this.flush(true, !!this.saveT);
     stopElec(); stopIdle(); closeClaude();
     this.dirHandle = null;
     this.blender.stop();
     showHome();
   }
   private async tourFromHome() {
+    if (!(await this.confirmClose())) return;
     // Run the tour on a fresh copy of the example that is not saved, so the walkthrough has something to show.
     const p = defaultProject(); p.name = 'Tour: The First Step';
     await this.load(p, 'Tutorial', null);
@@ -444,7 +488,6 @@ class FormframeApp implements App {
   async load(p: Project, msg: string, id: string | null) {
     stopElec();
     if (id !== this.projectId) closeClaude();
-    if (this.projectId && this.projectId !== id) await this.flush(true, !!this.saveT);
     if (this.blender.linked && id !== this.projectId) this.blender.stop();
     this.projectId = id; this.lastThumb = 0;
     this.project = p;
@@ -463,11 +506,12 @@ class FormframeApp implements App {
     this.resetHistory();
     assistantProjectChanged();
     hideHome(); this.viewport.resize(); toast(msg);
-    if (id) setTimeout(() => { if (this.projectId === id && !this.saveT) this.flush(true, false); }, 800); // first thumbnail once rendered
+    this.savedText = editText(this.project); this.updateSave(); // opened: nothing to save until you change something
   }
   /** Bring an outside project (file, folder, drop) into the library. */
   private async importProject(p: Project, msg: string) {
     if (needAccount()) return;
+    if (!(await this.confirmClose())) return;
     const id = newProjectId();
     await saveProject(id, p, null);
     await this.load(p, msg, id);
@@ -576,9 +620,9 @@ class FormframeApp implements App {
     $('#eBuild').onclick = () => this.startBuild();
     $$('#vpEmpty a[data-m]').forEach(a => (a.onclick = () => this.setMode(a.dataset.m as Mode)));
     // closing or hiding the tab: journal pending changes synchronously, then try the normal save
-    const unload = () => { if (this.saveT && this.projectId) { journalWrite(this.projectId, this.project); this.flush(); } };
-    document.addEventListener('visibilitychange', () => { if (document.hidden) unload(); });
-    window.addEventListener('pagehide', unload);
+    // closing the tab with unsaved edits: the browser asks first
+    window.addEventListener('beforeunload', e => { if (this.isDirty() || sceneDirty()) { e.preventDefault(); e.returnValue = ''; } });
+    $('#bSave').onclick = () => void this.save();
     ($('#pname') as HTMLInputElement).oninput = e => { this.project.name = (e.target as HTMLInputElement).value; this.changed('meta'); };
     $('#bExplode').onclick = () => {
       this.exploded = !this.exploded; $('#bExplode').classList.toggle('on', this.exploded);
@@ -640,7 +684,7 @@ class FormframeApp implements App {
         if (inScene()) { e.preventDefault(); void sceneHistory(redo ? 'redo' : 'undo'); return; }
         e.preventDefault(); void (redo ? this.redo() : this.undo()); return;
       }
-      if ((e.metaKey || e.ctrlKey) && e.key === 's') { e.preventDefault(); if (atHome()) return; this.dirHandle ? this.saveFolder() : this.saveDownload(); }
+      if ((e.metaKey || e.ctrlKey) && e.key === 's') { e.preventDefault(); if (atHome()) return; if (inScene()) { void saveSceneNow(); return; } void this.save().then(() => { if (this.dirHandle) this.saveFolder(); }); }
       if (e.key === 'Escape') { if ($('#modal').classList.contains('show')) closeModal(); else if (document.body.classList.contains('present')) $('#bPresent').click(); }
     });
     window.addEventListener('dragover', e => e.preventDefault());

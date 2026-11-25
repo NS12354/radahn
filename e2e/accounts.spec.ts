@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { home, errors } from './helpers';
+import { home, errors, save } from './helpers';
 import { fakeSupabase } from './fakesupabase';
 
 // Accounts run against a stand-in Supabase (e2e/fakesupabase.ts): two browser contexts are two computers.
@@ -22,7 +22,7 @@ test('sign up, projects save to the account, open on another computer, sign out 
   await expect(p1.locator('#hAccount')).toHaveText('Sign in');
   await p1.click('#hBlank b');
   await p1.waitForFunction(() => !!(window as any).formframe?.projectId);
-  await p1.fill('#pname', 'Cloud test'); await p1.press('#pname', 'Enter');
+  await p1.fill('#pname', 'Cloud test'); await p1.press('#pname', 'Enter'); await save(p1);
   await p1.waitForTimeout(800);
   expect(fake.db).toHaveLength(0);
   // create an account: this browser's projects go up to it
@@ -34,7 +34,7 @@ test('sign up, projects save to the account, open on another computer, sign out 
   // later edits follow
   await p1.locator('.pcard', { hasText: 'Cloud test' }).click();
   await p1.waitForFunction(() => !!(window as any).formframe?.projectId);
-  await p1.fill('#pname', 'Cloud test v2'); await p1.press('#pname', 'Enter');
+  await p1.fill('#pname', 'Cloud test v2'); await p1.press('#pname', 'Enter'); await save(p1);
   await expect.poll(() => fake.db.find(r => r.kind === 'project')?.name, { timeout: 15_000 }).toBe('Cloud test v2');
   expect(errs).toEqual([]);
 
@@ -175,8 +175,9 @@ test('signing out with a project open closes it and leaves nothing behind for th
   await page.click('#hBlank b');
   await page.waitForFunction(() => !!(window as any).formframe?.projectId);
   await page.fill('#pname', 'Private work'); await page.press('#pname', 'Enter');
-  // sign out from the studio, straight after an edit
+  // sign out from the studio, straight after an edit: it asks first, and Save keeps it
   await page.click('#bAccount'); await page.click('#acMenu [data-a=out]');
+  await page.click('.savedlg [data-r=save]');
   await expect(page.locator('#home')).toBeVisible();
   await expect(page.locator('#hAccount')).toHaveText('Sign in');
   await page.waitForTimeout(1500); // any late save would land by now
@@ -200,7 +201,7 @@ test('two accounts on one browser never see or receive each other’s projects',
   const make = async (name: string) => {
     await page.click('#hBlank b');
     await page.waitForFunction(() => !!(window as any).formframe?.projectId);
-    await page.fill('#pname', name); await page.press('#pname', 'Enter');
+    await page.fill('#pname', name); await page.press('#pname', 'Enter'); await save(page);
     await page.waitForTimeout(600);
     await page.click('#bHome'); await expect(page.locator('#home')).toBeVisible();
   };

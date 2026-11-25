@@ -24,6 +24,24 @@ export function modal(title: string, sub: string, body: string) {
 }
 export function closeModal() { $('#modal').classList.remove('show'); }
 
+/** Ask what to do with unsaved changes before closing something. Enter saves, Escape cancels. */
+export function askSave(name: string): Promise<'save' | 'discard' | 'cancel'> {
+  return new Promise(res => {
+    const d = document.createElement('div'); d.className = 'savedlg'; d.setAttribute('role', 'dialog'); d.setAttribute('aria-modal', 'true');
+    const n = document.createElement('b'); n.textContent = name || 'this project';
+    d.innerHTML = `<div class="sdbox"><h2>Save changes?</h2><p>You made changes to <span></span>. Save them before closing?</p>
+      <div class="sdacts"><button type="button" class="btn" data-r="discard">Don’t save</button><span class="sdgap"></span><button type="button" class="btn" data-r="cancel">Cancel</button><button type="button" class="btn primary" data-r="save">Save</button></div></div>`;
+    d.querySelector('p span')!.replaceWith(n);
+    const done = (r: 'save' | 'discard' | 'cancel') => { d.remove(); document.removeEventListener('keydown', key, true); res(r); };
+    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); done('cancel'); } };
+    d.querySelectorAll<HTMLElement>('[data-r]').forEach(b => (b.onclick = () => done(b.dataset.r as any)));
+    d.onclick = e => { if (e.target === d) done('cancel'); };
+    document.addEventListener('keydown', key, true);
+    document.body.appendChild(d);
+    d.querySelector<HTMLElement>('[data-r=save]')!.focus();
+  });
+}
+
 export async function copyText(t: string) {
   try { await navigator.clipboard.writeText(t); toast('Copied'); }
   catch { toast('Copy blocked. Select the text instead.'); }
