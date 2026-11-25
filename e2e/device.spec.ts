@@ -4,7 +4,7 @@ import { newProject, mode, popup, errors } from './helpers';
 test('Pico opens Thonny; F5 runs the real MicroPython firmware', async ({ page, context }) => {
   await newProject(page, 'example');
   await mode(page, 'elec');
-  await expect(page.locator('#bIde')).toHaveText('Thonny ↗');
+  await expect(page.locator('#bIde')).toHaveText('Code window ↗');
   const ide = await popup(context, page, '#bIde');
   const errs = errors(ide);
   await expect(ide.locator('.tinterp')).toHaveText(/MicroPython \(Raspberry Pi Pico\)/);
@@ -28,7 +28,7 @@ test('Uno opens the Arduino IDE; Upload runs and the Serial Monitor reads it at 
   await newProject(page, 'example');
   await mode(page, 'elec');
   await page.selectOption('#board', 'uno');
-  await expect(page.locator('#bIde')).toHaveText('Arduino IDE ↗');
+  await expect(page.locator('#bIde')).toHaveText('Code window ↗');
   const ide = await popup(context, page, '#bIde');
   await ide.click('[data-a=upload]');
   await expect(ide.locator('.aout')).toContainText('Done uploading.', { timeout: 150_000 });
@@ -57,7 +57,7 @@ test('Raspberry Pi opens a desktop with a working terminal', async ({ page, cont
   await newProject(page, 'example');
   await mode(page, 'elec');
   await page.selectOption('#board', 'pi5');
-  await expect(page.locator('#bIde')).toHaveText('Pi Desktop ↗');
+  await expect(page.locator('#bIde')).toHaveText('Code window ↗');
   const ide = await popup(context, page, '#bIde');
   await expect(ide.locator('.pwin .ptt', { hasText: 'Thonny' })).toBeVisible();
   await ide.click('.plaunch [data-l=term]');
