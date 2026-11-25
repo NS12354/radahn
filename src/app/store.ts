@@ -1,4 +1,5 @@
 import { LEGACY_LS_KEY, parseProject, serializeProject, type Project } from './project';
+import { currentUser, localChanged, registerLibrary } from './cloud';
 
 /**
  * Browser-local project library (IndexedDB). Metadata and project bodies live
@@ -14,6 +15,8 @@ export interface ProjectMeta {
   board: string;
   /** Small JPEG data URL of the viewport, when there is a model to show. */
   thumb?: string;
+  /** Account (user id) this copy belongs to, when it is saved to one (cloud.ts). */
+  owner?: string;
 }
 
 const DB = 'formframe', META = 'meta', DATA = 'data', CHATS = 'chats';
@@ -46,7 +49,8 @@ export const newProjectId = () => 'p' + Date.now().toString(36) + Math.random().
 export async function listProjects(): Promise<ProjectMeta[]> {
   const d = await db();
   const all = d ? await req<ProjectMeta[]>(d.transaction(META).objectStore(META).getAll()) : [...mem.meta.values()];
-  return all.sort((a, b) => b.updated - a.updated);
+  const me = currentUser()?.id; // another account's leftovers in this browser stay hidden
+  return all.filter(m => !m.owner || !me || m.owner === me).sort((a, b) => b.updated - a.updated);
 }
 
 export async function getMeta(id: string): Promise<ProjectMeta | undefined> {
@@ -67,16 +71,24 @@ export async function loadProject(id: string): Promise<Project | null> {
 export async function saveProject(id: string, p: Project, thumb?: string | null, edited = true) {
   const prev = await getMeta(id);
   const now = Date.now();
-  const meta: ProjectMeta = { id, name: p.name || 'Untitled project', created: prev?.created ?? now, updated: edited || !prev ? now : prev.updated, board: p.electronics.board, thumb: thumb === null ? undefined : thumb ?? prev?.thumb };
+  const meta: ProjectMeta = { id, name: p.name || 'Untitled project', created: prev?.created ?? now, updated: edited || !prev ? now : prev.updated, board: p.electronics.board, thumb: thumb === null ? undefined : thumb ?? prev?.thumb, owner: prev?.owner };
   const body = serializeProject(p);
+  await putLocal(meta, body);
+  localChanged('project', id);
+}
+async function putLocal(meta: ProjectMeta, body: string) {
   const d = await db();
-  if (!d) { mem.meta.set(id, meta); mem.data.set(id, body); return; }
+  if (!d) { mem.meta.set(meta.id, meta); mem.data.set(meta.id, body); return; }
   const t = d.transaction([META, DATA], 'readwrite');
-  t.objectStore(META).put(meta); t.objectStore(DATA).put(body, id);
+  t.objectStore(META).put(meta); t.objectStore(DATA).put(body, meta.id);
   await done(t);
 }
 
 export async function deleteProject(id: string) {
+  await removeLocal(id);
+  localChanged('project', id, true);
+}
+async function removeLocal(id: string) {
   const d = await db();
   if (!d) { mem.meta.delete(id); mem.data.delete(id); mem.chats.delete(id); return; }
   const t = d.transaction([META, DATA, CHATS], 'readwrite');
@@ -132,3 +144,26 @@ export async function saveChat(id: string, chat: unknown | null) {
   if (body) t.objectStore(CHATS).put(body, id); else t.objectStore(CHATS).delete(id);
   await done(t);
 }
+
+// ---- the project library as the account sync sees it (cloud.ts)
+registerLibrary('project', {
+  list: async () => {
+    const d = await db();
+    const all = d ? await req<ProjectMeta[]>(d.transaction(META).objectStore(META).getAll()) : [...mem.meta.values()];
+    return all.map(m => ({ id: m.id, updated: m.updated, owner: m.owner }));
+  },
+  read: async id => {
+    const m = await getMeta(id); if (!m) return null;
+    const d = await db();
+    const body = d ? await req<string | undefined>(d.transaction(DATA).objectStore(DATA).get(id)) : mem.data.get(id);
+    return body == null ? null : { name: m.name, board: m.board, thumb: m.thumb ?? null, created: m.created, updated: m.updated, body };
+  },
+  write: (id, r, owner) => putLocal({ id, name: r.name, board: r.board, thumb: r.thumb ?? undefined, created: r.created, updated: r.updated, owner }, r.body),
+  remove: id => removeLocal(id),
+  own: async (id, owner) => {
+    const m = await getMeta(id); if (!m || m.owner === owner) return;
+    const d = await db(); const nm = { ...m, owner };
+    if (!d) { mem.meta.set(id, nm); return; }
+    const t = d.transaction(META, 'readwrite'); t.objectStore(META).put(nm); await done(t);
+  },
+});

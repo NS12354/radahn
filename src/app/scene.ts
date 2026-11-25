@@ -10,6 +10,7 @@
  */
 import type { World } from './project';
 import { ARM_PICK, ARM_PLACE, pickBlock } from './robots';
+import { currentUser, localChanged, registerLibrary } from './cloud';
 
 export const SCENE_FORMAT_VERSION = 1;
 
@@ -34,7 +35,7 @@ export interface Scene {
   physics?: boolean;
 }
 
-export interface SceneMeta { id: string; name: string; created: number; updated: number; robots: number; thumb?: string }
+export interface SceneMeta { id: string; name: string; created: number; updated: number; robots: number; thumb?: string; /** Account this copy belongs to (cloud.ts). */ owner?: string }
 
 /** Shared worlds for scenes: bigger than a single robot's, so there's room for several. */
 export const SCENE_WORLDS: Record<string, { label: string; make: () => World }> = {
@@ -109,7 +110,8 @@ export const newSceneId = () => 's' + Date.now().toString(36) + Math.random().to
 export async function listScenes(): Promise<SceneMeta[]> {
   const d = await db();
   const all = d ? (await req<{ meta: SceneMeta }[]>(d.transaction(STORE).objectStore(STORE).getAll())).map(x => x.meta) : [...mem.values()].map(x => x.meta);
-  return all.sort((a, b) => b.updated - a.updated);
+  const me = currentUser()?.id; // another account's leftovers in this browser stay hidden
+  return all.filter(m => !m.owner || !me || m.owner === me).sort((a, b) => b.updated - a.updated);
 }
 async function getRec(id: string) {
   const d = await db();
@@ -118,13 +120,31 @@ async function getRec(id: string) {
 export async function loadScene(id: string): Promise<Scene | null> { const r = await getRec(id); return r ? parseScene(r.body) : null; }
 export async function saveScene(id: string, s: Scene, thumb?: string | null) {
   const prev = (await getRec(id))?.meta, now = Date.now();
-  const rec = { meta: { id, name: s.name || 'Untitled scene', created: prev?.created ?? now, updated: now, robots: s.robots.length, thumb: thumb === null ? undefined : thumb ?? prev?.thumb }, body: serializeScene(s) };
+  const rec = { meta: { id, name: s.name || 'Untitled scene', created: prev?.created ?? now, updated: now, robots: s.robots.length, thumb: thumb === null ? undefined : thumb ?? prev?.thumb, owner: prev?.owner }, body: serializeScene(s) };
+  await putRec(rec);
+  localChanged('scene', id);
+}
+async function putRec(rec: { meta: SceneMeta; body: string }) {
   const d = await db();
-  if (!d) { mem.set(id, rec); return; }
+  if (!d) { mem.set(rec.meta.id, rec); return; }
   await req(d.transaction(STORE, 'readwrite').objectStore(STORE).put(rec));
 }
-export async function deleteScene(id: string) {
+export async function deleteScene(id: string) { await removeRec(id); localChanged('scene', id, true); }
+async function removeRec(id: string) {
   const d = await db();
   if (!d) { mem.delete(id); return; }
   await req(d.transaction(STORE, 'readwrite').objectStore(STORE).delete(id));
 }
+async function allRecs() {
+  const d = await db();
+  return d ? (await req<{ meta: SceneMeta }[]>(d.transaction(STORE).objectStore(STORE).getAll())).map(x => x.meta) : [...mem.values()].map(x => x.meta);
+}
+
+// ---- the scene library as the account sync sees it (cloud.ts)
+registerLibrary('scene', {
+  list: async () => (await allRecs()).map(m => ({ id: m.id, updated: m.updated, owner: m.owner })),
+  read: async id => { const r = await getRec(id); return r ? { name: r.meta.name, board: '', thumb: r.meta.thumb ?? null, created: r.meta.created, updated: r.meta.updated, body: r.body } : null; },
+  write: async (id, r, owner) => { let robots = 0; try { robots = (JSON.parse(r.body).robots ?? []).length; } catch { /* */ } await putRec({ meta: { id, name: r.name, created: r.created, updated: r.updated, robots, thumb: r.thumb ?? undefined, owner }, body: r.body }); },
+  remove: id => removeRec(id),
+  own: async (id, owner) => { const r = await getRec(id); if (r && r.meta.owner !== owner) await putRec({ ...r, meta: { ...r.meta, owner } }); },
+});

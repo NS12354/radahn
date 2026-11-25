@@ -894,3 +894,40 @@ body.asst-on .me .editor{flex:1 1 40%;min-height:120px}
 .asin{display:flex;gap:8px;padding:8px 10px;border-top:1px solid var(--line);align-items:flex-end}
 .asin textarea{flex:1;resize:none;border:1px solid var(--line);border-radius:12px;padding:8px 12px;font:inherit;font-size:13px;background:var(--bg);color:var(--text);max-height:140px}
 .asin textarea:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:transparent}
+
+/* accounts: sign-in page and account button */
+.acbtn{display:inline-flex;align-items:center;gap:6px}
+.hhead .acbtn{margin-left:8px}
+.acbtn.signed{background:var(--sel);border-color:transparent}
+.acdot{width:8px;height:8px;border-radius:50%;background:var(--ok,#188038)}
+.acdot.saving{background:var(--accent);animation:acpulse 1s ease-in-out infinite}
+.acdot.warn{background:var(--warn,#b06000)}
+@keyframes acpulse{50%{opacity:.35}}
+.acmenu{position:fixed;z-index:60;min-width:260px;background:var(--panel);border-radius:16px;box-shadow:var(--sh-3,0 8px 24px rgba(0,0,0,.18));padding:8px 0}
+.acmenu .acwho{padding:10px 16px 12px;border-bottom:1px solid var(--line);margin-bottom:6px}
+.acmenu .acwho b{display:block;font-weight:500}
+.acmenu .acwho span{font-size:12px;color:var(--dim)}
+.acmenu button{display:block;width:100%;text-align:left;border:0;background:none;padding:10px 16px;font:inherit;font-size:14px;color:var(--text);cursor:pointer}
+.acmenu button:hover{background:var(--sel)}
+#auth{position:fixed;inset:0;z-index:80;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:16px;overflow:auto}
+#auth[hidden]{display:none}
+.aucard{width:min(420px,100%);background:var(--panel);border-radius:28px;padding:36px 40px 24px;box-shadow:var(--sh-2,0 2px 8px rgba(0,0,0,.08))}
+.aulogo{display:flex;align-items:center;gap:10px;font-size:18px;font-weight:500;margin-bottom:24px}
+.aulogo i{width:24px;height:24px;border-radius:7px;border:3px solid var(--accent);box-sizing:border-box}
+.aucard h1{font-size:26px;font-weight:400;margin:0 0 8px}
+.aulead{color:var(--text2);font-size:14px;line-height:1.5;margin:0 0 20px}
+.aufield{display:block;margin-bottom:14px}
+.aufield span{display:block;font-size:12px;font-weight:500;color:var(--text2);margin-bottom:6px}
+.aufield input{width:100%;box-sizing:border-box;height:48px;padding:0 14px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--text);font:inherit;font-size:15px}
+.aufield input:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:transparent}
+.auerr{color:var(--bad,#b3261e);font-size:13px;margin:0 0 10px}
+.auerr:empty{display:none}
+.aubig{width:100%;height:44px;font-size:15px;margin-top:4px}
+.aulinks{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-top:14px}
+.aulink{border:0;background:none;color:var(--accent);font:inherit;font-size:13px;font-weight:500;cursor:pointer;padding:4px 0}
+.aulink:hover{text-decoration:underline}
+.aualt{margin-top:18px;padding-top:16px;border-top:1px solid var(--line);font-size:13px;color:var(--text2)}
+.auacts{display:flex;justify-content:flex-end}
+.auskip{display:block;margin:18px auto 4px}
+.aufine{text-align:center;font-size:12px;color:var(--dim);margin:0}
+@media (max-width:480px){.aucard{padding:28px 20px 20px;border-radius:20px}}

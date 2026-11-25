@@ -1,5 +1,6 @@
 import './styles.css';
 import * as THREE from 'three';
+import { initAccountUI } from './ui/account';
 import { worldDragStart, worldDragging } from './ui/worlddrag';
 import { initAssistant, assistantProjectChanged } from './ui/assistant';
 import { manageAiKey, setAccessBase } from './app/access';
@@ -127,6 +128,7 @@ class FormframeApp implements App {
       openScene: async sid => { const sc = await loadScene(sid).catch(() => null); if (!sc) { toast('That scene could not be found'); renderHome(); return; } hideHome(); await openScene(sid, sc); },
       deleteScene: async (sid, name) => { if (!window.confirm?.(`Delete the scene "${name}"? The robot projects in it are kept.`)) return; await deleteScene(sid); renderHome(); },
     });
+    void initAccountUI(() => { if (atHome()) void renderHome(); }); // optional accounts: saving projects to your account
     initScene({ base: BASE, studio: this.viewport, openProject: pid => this.openProject(pid), goHome: () => showHome() });
     $('#hTour').classList.toggle('nudge', !tourSeen());
     listen(m => {

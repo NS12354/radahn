@@ -30,6 +30,7 @@ export default defineConfig({
     url: `http://localhost:${PORT}/`,
     reuseExistingServer: false,
     timeout: 120_000,
-    env: { FF_ALLOW_LOCAL_FETCH: '1', CLAUDE_PATH: fileURLToPath(new URL('./e2e/fixtures/fake-claude.mjs', import.meta.url)), FF_WORKSPACES: path.join(os.tmpdir(), 'formframe-e2e-workspaces') },
+    // accounts point at a stand-in Supabase that e2e/fakesupabase.ts answers (no real project is touched)
+    env: { VITE_SUPABASE_URL: 'https://supabase.test', VITE_SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_test', FF_ALLOW_LOCAL_FETCH: '1', CLAUDE_PATH: fileURLToPath(new URL('./e2e/fixtures/fake-claude.mjs', import.meta.url)), FF_WORKSPACES: path.join(os.tmpdir(), 'formframe-e2e-workspaces') },
   },
 });
