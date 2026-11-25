@@ -104,7 +104,14 @@ export interface World {
   obstacles: Obstacle[];
   /** A dark line on the floor (closed loop through these XZ points). */
   track?: { points: [number, number][]; width: number };
+  /** Lines drawn on the floor (Draw tool): line sensors see them just like the track. */
+  lines?: DrawnLine[];
+  /** Where the robot starts (Draw → Start): XZ mm and heading in degrees (0 faces +Z). Reset and Run start here. */
+  start?: { pos: [number, number]; yaw: number };
+  /** A goal zone (Draw → Finish): reaching it while the code runs reports the time. */
+  finish?: { pos: [number, number]; r: number };
 }
+export interface DrawnLine { points: [number, number][]; width: number; /** joins the last point back to the first */ closed?: boolean }
 export type ObstacleMaterial = 'fixed' | 'foam' | 'cardboard' | 'plastic' | 'wood' | 'metal';
 export interface Obstacle { shape: 'box' | 'cyl'; pos: [number, number]; size: [number, number, number]; color?: string; rot?: number; pick?: boolean; name?: string; material?: ObstacleMaterial; mass?: number; /** A loose electronic part (component uid), see loose.ts. */ comp?: string }
 /**

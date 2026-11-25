@@ -10,12 +10,13 @@ import { BuiltProduct } from '../scene/built';
 import { firmwareRunning } from './elec';
 import { crashActive } from './crash';
 import { track } from './track';
+import { selectWorldObject } from './worldedit';
 
 let drag: { prod: BuiltProduct; i: number; mesh: THREE.Object3D; start: THREE.Vector3; pos: [number, number]; rot: number; x0: number; turn: boolean; now: { pos: [number, number]; rot: number } } | null = null;
 const ray = new THREE.Raycaster();
 
 /** Where the pointer meets the floor, in the model's mm space. */
-function floorAt(A: App, prod: BuiltProduct, e: { clientX: number; clientY: number }) {
+export function floorAt(A: App, prod: BuiltProduct, e: { clientX: number; clientY: number }) {
   const r = A.viewport.renderer.domElement.getBoundingClientRect();
   ray.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), A.viewport.camera);
   prod.mm.updateWorldMatrix(true, false);
@@ -34,6 +35,7 @@ export function worldDragStart(A: App, e: PointerEvent): boolean {
   const hit = A.viewport.hit(e, [...prod.pickables(), ...objs]);
   const i = hit?.object.userData.obstacle as number | undefined;
   if (!hit || i === undefined || !world.obstacles[i]) return false; // the robot itself, or empty space: not ours
+  selectWorldObject(i); // its move/turn/resize handles appear
   if (firmwareRunning()) { toast('Stop the code to move things in the world'); return true; }
   const start = floorAt(A, prod, e); if (!start) return false;
   const o = world.obstacles[i];

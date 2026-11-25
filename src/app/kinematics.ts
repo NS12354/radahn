@@ -225,11 +225,17 @@ export function raycastWorld(world: World, o: THREE.Vector3, d: THREE.Vector3): 
 }
 /** Is floor point (x, z) on the dark line? */
 export function onTrack(world: World, x: number, z: number): boolean {
-  const t = world.track; if (!t || t.points.length < 2) return false;
-  for (let i = 0; i < t.points.length; i++) {
-    const [ax, az] = t.points[i], [bx, bz] = t.points[(i + 1) % t.points.length];
+  const all = [...(world.track ? [{ ...world.track, closed: true }] : []), ...(world.lines ?? [])];
+  return all.some(l => distToLine(l.points, !!l.closed, x, z) <= l.width / 2);
+}
+/** Distance from floor point (x, z) to a polyline (closed: the last point joins the first). */
+export function distToLine(pts: [number, number][], closed: boolean, x: number, z: number): number {
+  if (pts.length === 1) return Math.hypot(x - pts[0][0], z - pts[0][1]);
+  let best = Infinity;
+  for (let i = 0; i < pts.length - (closed ? 0 : 1); i++) {
+    const [ax, az] = pts[i], [bx, bz] = pts[(i + 1) % pts.length];
     const abx = bx - ax, abz = bz - az, u = Math.max(0, Math.min(1, ((x - ax) * abx + (z - az) * abz) / Math.max(1e-9, abx * abx + abz * abz)));
-    if (Math.hypot(x - (ax + abx * u), z - (az + abz * u)) <= t.width / 2) return true;
+    best = Math.min(best, Math.hypot(x - (ax + abx * u), z - (az + abz * u)));
   }
-  return false;
+  return best;
 }

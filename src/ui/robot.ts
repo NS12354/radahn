@@ -4,6 +4,7 @@
  * (teach mode: record poses, insert them into the code). Also: the world the
  * robot lives in, mass and servo supply, reset, URDF export/import, ROS 2 bridge.
  */
+import * as THREE from 'three';
 import type { App } from './app';
 import { attachLoose } from '../app/loose';
 import { $, el, esc, toast, download } from './dom';
@@ -16,12 +17,22 @@ import { COMPONENTS } from '../hw/library/components';
 import { MATERIALS, materialOf, objTitle, type BuiltModel, type ObstacleMaterial, type World } from '../app/project';
 import { defaultAutoOpts } from '../app/project';
 import { track } from './track';
+import { onWorldEdited, openDraw, selectWorldObject } from './worldedit';
 import { ARM_PICK, armTable, pickBlock } from '../app/robots';
 import { crashActive } from './crash';
 
 let A: App;
 let sim: RobotSim | null = null;
 let sig = '';
+/** The Start marker the sim's home pose was last set from, and the Finish run being timed. */
+let homeKey = '', race: { t0: number; done: boolean } | null = null;
+/** Put the sim's home at the world's Start marker (or the origin). Returns true if it moved. */
+function applyStart(w?: World) {
+  const k = JSON.stringify(w?.start ?? null); if (!sim || k === homeKey) return false;
+  homeKey = k; const st = w?.start;
+  sim.home = st ? new THREE.Matrix4().makeRotationY(st.yaw * Math.PI / 180).setPosition(st.pos[0], 0, st.pos[1]) : new THREE.Matrix4();
+  return true;
+}
 let open = true;
 let uiT = 0;
 const bridge = new RosBridge(() => sim);
@@ -42,6 +53,7 @@ const model = (): BuiltModel | null => (A.product instanceof BuiltProduct ? A.pr
 
 export function initRobot(app: App) {
   A = app;
+  onWorldEdited(() => render());
   const panel = el('div', 'robotp'); panel.id = 'robotPanel'; panel.style.display = 'none';
   $('#viewport').appendChild(panel);
 }
@@ -56,11 +68,21 @@ export function robotFrame(dt: number) {
   }
   const s = JSON.stringify(m.parts.map(p => [p.id, p.parent, p.joint, p.foot, p.pos, p.rot, p.size])) + JSON.stringify(m.robot ?? null);
   if (!sim || sim.model !== m) {
-    sim = new RobotSim(m); sim.settle(); sig = s; render();
+    sim = new RobotSim(m); homeKey = ''; if (applyStart(m.robot?.world)) sim.reset(); sim.settle(); sig = s; render();
     sim.onBreak = lines => { toast(`Broken in a collision: ${lines.join('; ')}`); A.changed('review'); track('model', `Collision damage: ${lines.join('; ')}`); }; prod.setPose(sim.pose); prod.setWorld(m.robot?.world); A.viewport.frame(prod.group);
     if (m.robot && m.robot.physics !== false) { const me = sim; me.setPhysics(true, A.project.electronics.comps).then(() => render()).catch(e => toast("Physics couldn't start: " + e.message)); }
   }
-  else if (s !== sig) { sig = s; sim.resync(); sim.settle(); render(); }
+  else if (s !== sig) { sig = s; sim.resync(); if (applyStart(m.robot?.world) && !firmwareRunning()) sim.reset(); sim.settle(); render(); }
+  // Finish marker: time each run from Run to reaching it
+  const fin = m.robot?.world?.finish;
+  if (!firmwareRunning()) race = null;
+  else if (fin) {
+    race ??= { t0: performance.now(), done: false };
+    if (!race.done && Math.hypot(sim.body.x - fin.pos[0], sim.body.z - fin.pos[1]) <= fin.r) {
+      race.done = true; const t = ((performance.now() - race.t0) / 1000).toFixed(1);
+      toast(`Reached the finish in ${t} s`); track('test', `Reached the finish in ${t} s`);
+    }
+  }
   sim.step(dt, A.project.electronics.comps, A.bench, firmwareRunning());
   prod.setPose(sim.pose);
   prod.setWorld(m.robot?.world);
@@ -70,7 +92,7 @@ export function robotFrame(dt: number) {
 }
 
 /** Reset the robot to its rest pose at the origin (after rebuilding, or from the button). */
-export function resetRobot() { sim?.reset(); render(); }
+export function resetRobot() { sim?.reset(); if (race) race = { t0: performance.now(), done: false }; render(); }
 export const robotSim = () => sim;
 (globalThis as any).__robot = robotSim; // handy for debugging from the console
 
@@ -102,7 +124,7 @@ function render() {
       ${sp.world ? `<div class="rprow rpobjs"><label>Objects</label>${sp.world.obstacles.map((o, i) => `<span class="rpobj" title="${esc(objTitle(o))}"><i style="background:${esc(o.color ?? '#c8743a')}"></i>${esc(objName(o))}<select class="rpmat" data-i="${i}" aria-label="What the ${esc(objName(o).toLowerCase())} is made of">${(Object.keys(MATERIALS) as ObstacleMaterial[]).map(k => `<option value="${k}" ${materialOf(o) === k ? 'selected' : ''}>${MATERIALS[k].label}</option>`).join('')}</select>${o.comp ? `<button class="rpatt" data-i="${i}" title="Mount the ${esc(objName(o))} on the robot where it lies. It then moves with the robot; fine-tune its spot in Design.">Attach</button>` : ''}<button class="rpdel" data-i="${i}" title="Remove ${esc(objName(o).toLowerCase())}" aria-label="Remove ${esc(objName(o).toLowerCase())}">×</button></span>`).join('') || '<span class="dim">None</span>'}<button class="btn" id="rpAddBlock" title="Add a 20 mm block the gripper can pick up">+ Block</button><button class="btn" id="rpAddBox" title="Add a cardboard box for the robot to push">+ Box</button></div>` : ''}
       <div class="rprow adv"><label>Mass</label><input type="number" id="rpMass" value="${sp.mass}" min="10" step="50"> g
         ${becs.length ? `<label>Servo supply</label><input type="number" id="rpAmps" value="${becs[0].props?.amps ?? 5}" min="1" step="1"> A` : ''}</div>
-      <div class="rpbtns"><button class="btn" id="rpReset" data-ico="reset">Reset position</button><button class="btn adv" id="rpUrdf" title="Save a URDF for ROS, RViz and Gazebo">Export URDF</button><button class="btn adv" id="rpImp" title="Load a robot from a URDF file">Import URDF…</button></div>
+      <div class="rpbtns"><button class="btn" id="rpReset" data-ico="reset">Reset position</button><button class="btn" id="rpDraw" title="Draw lines to follow, walls, a start and a finish on the floor">Draw</button><button class="btn adv" id="rpUrdf" title="Save a URDF for ROS, RViz and Gazebo">Export URDF</button><button class="btn adv" id="rpImp" title="Load a robot from a URDF file">Import URDF…</button></div>
       <div class="rprow ros adv"><label>ROS 2</label><input type="text" id="rpRos" value="ws://localhost:9090" spellcheck="false"><button class="btn" id="rpRosGo">${bridge.status === 'connected' || bridge.status === 'connecting' ? 'Disconnect' : 'Connect'}</button></div>
       <div class="rpnote adv" id="rpNote">${bridge.status === 'error' ? esc(bridge.error) : bridge.status === 'connected' ? 'Publishing /joint_states and /formframe/pose; listening to /cmd_vel and /formframe/joint_commands.' : 'Needs rosbridge_server on the ROS side.'}</div>
     </div>` : ''}`;
@@ -142,6 +164,7 @@ function render() {
     const at = spots.find(([x, z]) => !taken(x, z)) ?? [spots[0][0], spots[0][1] + 40 * obs.length];
     obs.push(pickBlock(at as [number, number]));
     A.changed('product'); render(); track('model', 'Robot world: added a block');
+    selectWorldObject(obs.length - 1); // comes in with its move handles showing
   };
   panel.querySelectorAll<HTMLSelectElement>('.rpmat').forEach(s => (s.onchange = () => {
     const o = sp.world!.obstacles[+s.dataset.i!]; o.material = s.value as ObstacleMaterial; delete o.mass;
@@ -152,12 +175,14 @@ function render() {
     const at: [number, number] = sp.kind === 'arm' ? [0, 230 + 30 * n] : [((n % 3) - 1) * 220, 450 + Math.floor(n / 3) * 220];
     obs.push(sp.kind === 'arm' ? { shape: 'box', pos: at, size: [50, 40, 50], color: '#c9a36b', name: 'Cardboard box', material: 'cardboard' } : { shape: 'box', pos: at, size: [160, 120, 160], color: '#c9a36b', name: 'Cardboard box', material: 'cardboard' });
     A.changed('product'); render(); track('model', 'Robot world: added a cardboard box');
+    selectWorldObject(obs.length - 1); // comes in with its move handles showing
   };
   $('#rpPhys').onchange = async e => { sp.physics = !!(e.target as HTMLSelectElement).value; sim!.reset(); await sim!.setPhysics(!!sp.physics, A.project.electronics.comps); A.changed('product'); toast(sp.physics ? 'Realistic physics: gravity, mass, friction, collisions and servo torque limits' : 'Physics off: ideal motion, the robot passes through things'); };
   $('#rpMobile').onchange = e => { sp.mobile = (e.target as HTMLSelectElement).value as any; sim!.reset(); A.changed('product'); };
   $('#rpMass').onchange = e => { sp.mass = Math.max(10, +(e.target as HTMLInputElement).value); A.changed('product'); };
   if (becs.length) $('#rpAmps').onchange = e => { becs[0].props = { ...becs[0].props, amps: Math.max(1, +(e.target as HTMLInputElement).value) }; A.changed('electronics'); };
   $('#rpReset').onclick = () => resetRobot();
+  $('#rpDraw').onclick = () => { if (!sp.world) { sp.world = WORLDS.floor.make(); A.changed('product'); render(); } openDraw(); };
   $('#rpUrdf').onclick = () => { download(`${A.project.name.replace(/[^\w-]+/g, '_') || 'robot'}.urdf`, exportUrdf(model()!, A.project.name), 'application/xml'); toast('Exported URDF: metres, Z up, x forward'); };
   $('#rpImp').onclick = () => importDialog();
   $('#rpRosGo').onclick = () => { if (bridge.status === 'connected' || bridge.status === 'connecting') bridge.close(); else bridge.connect(($('#rpRos') as HTMLInputElement).value.trim()); };

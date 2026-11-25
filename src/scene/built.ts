@@ -100,15 +100,34 @@ export function drawWorld(w: World, g: THREE.Group, picks: Map<number, THREE.Mes
   const grid = new THREE.GridHelper(w.size, Math.round(w.size / 100), 0xb5b1a8, 0xc7c3ba); grid.position.y = -0.1; g.add(grid);
   const s = w.size / 2, wallM = new THREE.MeshStandardMaterial({ color: 0xbdb7ab, roughness: 0.9 });
   for (const [x, z, ww, dd] of [[0, -s - 5, w.size + 20, 10], [0, s + 5, w.size + 20, 10], [-s - 5, 0, 10, w.size], [s + 5, 0, 10, w.size]]) { const m = new THREE.Mesh(new THREE.BoxGeometry(ww, 60, dd), wallM); m.position.set(x, 30, z); g.add(m); }
-  if (w.track && w.track.points.length > 1) {
-    const lm = new THREE.MeshBasicMaterial({ color: 0x15161a });
-    const pts = w.track.points;
-    for (let i = 0; i < pts.length; i++) {
+  const lm = new THREE.MeshBasicMaterial({ color: 0x15161a });
+  const line = (pts: [number, number][], width: number, closed: boolean, lift: number) => {
+    if (pts.length === 1) { const d = new THREE.Mesh(new THREE.CircleGeometry(width / 2, 20), lm); d.rotation.x = -Math.PI / 2; d.position.set(pts[0][0], lift, pts[0][1]); g.add(d); return; }
+    for (let i = 0; i < pts.length - (closed ? 0 : 1); i++) {
       const [ax, az] = pts[i], [bx, bz] = pts[(i + 1) % pts.length], len = Math.hypot(bx - ax, bz - az);
-      const seg = new THREE.Mesh(new THREE.PlaneGeometry(len + w.track.width, w.track.width), lm);
-      seg.rotation.x = -Math.PI / 2; seg.rotation.z = -Math.atan2(bz - az, bx - ax); seg.position.set((ax + bx) / 2, 0, (az + bz) / 2);
+      const seg = new THREE.Mesh(new THREE.PlaneGeometry(len, width), lm);
+      seg.rotation.x = -Math.PI / 2; seg.rotation.z = -Math.atan2(bz - az, bx - ax); seg.position.set((ax + bx) / 2, lift, (az + bz) / 2);
       g.add(seg);
     }
+    for (const [x, z] of pts) { const d = new THREE.Mesh(new THREE.CircleGeometry(width / 2, 16), lm); d.rotation.x = -Math.PI / 2; d.position.set(x, lift, z); g.add(d); } // round joints and ends
+  };
+  if (w.track && w.track.points.length > 1) line(w.track.points, w.track.width, true, 0);
+  for (const l of w.lines ?? []) if (l.points.length) line(l.points, l.width, !!l.closed, 0.05);
+  if (w.start) { // a green pad with an arrow pointing the way the robot faces
+    const sg = new THREE.Group(); sg.userData.marker = 'start';
+    const pad = new THREE.Mesh(new THREE.RingGeometry(70, 82, 40), new THREE.MeshBasicMaterial({ color: 0x1e8e3e })); pad.rotation.x = -Math.PI / 2; sg.add(pad);
+    const tri = new THREE.Shape(); tri.moveTo(0, 60); tri.lineTo(-30, 10); tri.lineTo(-11, 10); tri.lineTo(-11, -45); tri.lineTo(11, -45); tri.lineTo(11, 10); tri.lineTo(30, 10); tri.closePath();
+    const arrow = new THREE.Mesh(new THREE.ShapeGeometry(tri), new THREE.MeshBasicMaterial({ color: 0x1e8e3e })); arrow.rotation.x = -Math.PI / 2; arrow.rotation.z = Math.PI; sg.add(arrow);
+    sg.position.set(w.start.pos[0], 0.1, w.start.pos[1]); sg.rotation.y = w.start.yaw * Math.PI / 180; g.add(sg);
+  }
+  if (w.finish) { // a checkered ring and a flag
+    const fg = new THREE.Group(); fg.userData.marker = 'finish';
+    const n = 16, r = w.finish.r;
+    for (let i = 0; i < n; i++) { const seg = new THREE.Mesh(new THREE.RingGeometry(r - 14, r, 4, 1, (i / n) * Math.PI * 2, Math.PI * 2 / n), new THREE.MeshBasicMaterial({ color: i % 2 ? 0x202124 : 0xffffff, side: THREE.DoubleSide })); seg.rotation.x = -Math.PI / 2; fg.add(seg); }
+    const fill = new THREE.Mesh(new THREE.CircleGeometry(r - 14, 40), new THREE.MeshBasicMaterial({ color: 0xd93025, transparent: true, opacity: 0.12 })); fill.rotation.x = -Math.PI / 2; fg.add(fill);
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(2.5, 2.5, 160, 8), new THREE.MeshStandardMaterial({ color: 0x5f6368 })); pole.position.set(r - 7, 80, 0); fg.add(pole);
+    const flag = new THREE.Mesh(new THREE.PlaneGeometry(60, 38), new THREE.MeshStandardMaterial({ color: 0xd93025, side: THREE.DoubleSide })); flag.position.set(r - 7 + 30, 140, 0); fg.add(flag);
+    fg.position.set(w.finish.pos[0], 0.1, w.finish.pos[1]); g.add(fg);
   }
   w.obstacles.forEach((o, i) => {
     const m = new THREE.Mesh(o.shape === 'cyl' ? new THREE.CylinderGeometry(o.size[0] / 2, o.size[0] / 2, o.size[1], 32) : new THREE.BoxGeometry(o.size[0], o.size[1], o.size[2]), new THREE.MeshStandardMaterial({ color: new THREE.Color(o.color ?? '#c8743a'), roughness: 0.7 }));

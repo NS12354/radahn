@@ -4,6 +4,7 @@ import { syncLooseParts } from './app/loose';
 import { initAccountUI, isGuest, needAccount } from './ui/account';
 import { GUEST_FIRST, currentUser, localChanged, onSignOut } from './app/cloud';
 import { worldDragStart, worldDragging } from './ui/worlddrag';
+import { initWorldEdit, worldEditFrame, worldGizmoBusy } from './ui/worldedit';
 import { initAssistant, assistantProjectChanged } from './ui/assistant';
 import { manageAiKey, setAccessBase } from './app/access';
 import { HOSTED } from './hosted';
@@ -115,6 +116,7 @@ class FormframeApp implements App {
     if (restored) setTimeout(() => toast(`Recovered unsaved changes from your last session`), 800);
     await this.rebuildProduct();
     initModeler(this);
+    initWorldEdit(this);
     initDeviceBridge(this, () => this.projectId);
     initHealth(this);
     initPlan(this);
@@ -130,7 +132,7 @@ class FormframeApp implements App {
     this.wireUI();
     this.renderAll();
     this.setMode('design');
-    this.viewport.onTick((dt, now) => { robotFrame(dt); crashFrame(dt); this.product.tick(dt, now); this.elec.tick(dt); elecFrame(dt); placePins(this); });
+    this.viewport.onTick((dt, now) => { robotFrame(dt); worldEditFrame(); crashFrame(dt); this.product.tick(dt, now); this.elec.tick(dt); elecFrame(dt); placePins(this); });
     if (document.fonts?.ready) document.fonts.ready.then(() => { if (this.mode !== 'elec') redrawScreen(this); });
     initTour(m => this.setMode(m));
     initHome({
@@ -706,6 +708,7 @@ class FormframeApp implements App {
       if (e.target !== cv) return;
       down = { x: e.clientX, y: e.clientY };
       audio.unlock();
+      if (worldGizmoBusy()) return; // the world object's move/turn/resize handles have it
       if (worldDragStart(this, e)) return; // any object in a robot's world can be dragged
       if (this.mode !== 'proto' && this.mode !== 'elec') return;
       const h = this.viewport.hit(e, this.product.pickables()); if (!h) return;
