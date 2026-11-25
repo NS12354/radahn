@@ -78,7 +78,7 @@ function material(p: BuiltPart) {
 interface RootData { part: BuiltPart; base: THREE.Vector3; baseQ: THREE.Quaternion }
 
 /** The display as a panel on a solid part's front face (local +Z), slightly proud of it. */
-function frontPanel(p: BuiltPart): THREE.BufferGeometry {
+export function frontPanel(p: BuiltPart): THREE.BufferGeometry {
   const [w, h, d] = p.size;
   const round = ['cyl', 'cone', 'sphere', 'torus', 'tube'].includes(p.shape);
   const zOff = p.shape === 'sphere' ? d / 2 * 0.98 : d / 2 + 0.05;

@@ -3,7 +3,8 @@ import type { Project } from '../app/project';
 import { autoBuild } from '../app/autobuild';
 import { defaultAutoOpts } from '../app/project';
 import { BOARDS } from '../hw/library/boards';
-import { shapeGeometry } from './built';
+import { frontPanel, shapeGeometry } from './built';
+import { displayComps } from '../app/screenpart';
 import { FINISHES } from './parametric';
 
 /**
@@ -24,9 +25,17 @@ export class ElectronicsView {
 
   constructor() { this.group.visible = false; this.group.name = 'electronics'; }
 
-  /** Rebuild from the project's wiring. `scale` = scene units per mm; `skip` = comp ids the model already shows. */
-  build(p: Project, scale: number, skip: Set<string>) {
+  /** The product's display image, shown on the wired display's face. Shared with the product, so never disposed here. */
+  private screen: THREE.Texture | null = null;
+
+  /**
+   * Rebuild from the project's wiring. `scale` = scene units per mm; `skip` = comp ids the model already shows.
+   * `screen` (the product's display texture) goes on the front of the first wired display, so what the
+   * firmware draws shows on the part itself, not only in the Electronics panel.
+   */
+  build(p: Project, scale: number, skip: Set<string>, screen: THREE.Texture | null = null) {
     this.clear();
+    this.screen = screen;
     const board = BOARDS[p.electronics.board];
     if (!board) return;
     const r = autoBuild(board, p.electronics.comps, p.product.built?.auto ?? defaultAutoOpts());
@@ -35,6 +44,9 @@ export class ElectronicsView {
     const depth = r.size[2];
     this.step = Math.max(10, Math.min(40, depth * 0.7));
     const labelled = new Set<string>();
+    // the display module: the biggest part of the first wired display that isn't already in the model
+    const shown = displayComps(p).find(uid => !skip.has(uid));
+    const face = screen && shown ? parts.filter(x => x.comp === shown).sort((a, b) => b.size[0] * b.size[1] - a.size[0] * a.size[1])[0] : undefined;
     for (const part of parts) {
       const f = FINISHES[part.finish] ?? FINISHES.satin;
       const mesh = new THREE.Mesh(shapeGeometry(part), new THREE.MeshStandardMaterial({ color: part.color, roughness: f.r, metalness: f.m }));
@@ -42,6 +54,7 @@ export class ElectronicsView {
       mesh.rotation.set(...part.rot.map(d => d * Math.PI / 180) as [number, number, number]);
       // electronics layers: front parts (1) → board (0) → packed modules (−1)
       const layer = part.comp === 'board' ? 0 : part.layer ?? 0;
+      if (part === face) mesh.add(new THREE.Mesh(frontPanel(part), new THREE.MeshBasicMaterial({ map: screen, toneMapped: false })));
       this.group.add(mesh);
       this.items.push({ o: mesh, z: part.pos[2], layer });
       const key = part.comp ?? part.name;
@@ -94,7 +107,7 @@ export class ElectronicsView {
   clear() {
     for (const l of this.attached) { l.parent?.remove(l); l.material.map?.dispose(); l.material.dispose(); }
     this.attached = [];
-    this.group.traverse((o: any) => { o.geometry?.dispose(); o.material?.map?.dispose(); o.material?.dispose(); });
+    this.group.traverse((o: any) => { o.geometry?.dispose(); if (o.material?.map !== this.screen) o.material?.map?.dispose(); o.material?.dispose(); });
     this.group.clear(); this.items = []; this.labels = []; this.count = 0;
   }
 }

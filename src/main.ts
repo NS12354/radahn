@@ -360,7 +360,7 @@ class FormframeApp implements App {
     if (p instanceof BuiltProduct) for (const part of this.project.product.built?.parts ?? []) if (part.kind === 'internal' && part.comp) skip.add(part.comp);
     // imported models are normalised to ~8 units across; everything else is 1 unit = 10 mm
     const scale = p instanceof ImportedProduct ? 0.07 : 0.1;
-    this.elec.build(this.project, scale, skip);
+    this.elec.build(this.project, scale, skip, p.screenTex);
     if (p instanceof BuiltProduct) { // label the electronics the model already contains
       const seen = new Set<string>(), boardName = BOARDS[this.project.electronics.board]?.name ?? 'Board';
       const labels = (this.project.product.built?.parts ?? []).filter(x => x.kind === 'internal' && x.comp && !/connector|standoff|chip/i.test(x.name) && !seen.has(x.comp) && seen.add(x.comp))
