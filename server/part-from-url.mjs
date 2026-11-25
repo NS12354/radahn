@@ -19,13 +19,17 @@ const SURFACES = ['none', 'button', 'knob', 'pot', 'indicator', 'display', 'soun
 const CATEGORIES = ['input', 'output', 'display', 'sensor', 'actuator'];
 
 // ---------------------------------------------------------------- safe fetch
-function privateIp(ip) {
-  if (net.isIPv4(ip)) {
-    const [a, b] = ip.split('.').map(Number);
-    return a === 10 || a === 127 || a === 0 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127);
-  }
-  const v = ip.toLowerCase();
-  return v === '::1' || v === '::' || v.startsWith('fc') || v.startsWith('fd') || v.startsWith('fe80') || v.startsWith('::ffff:127.') || v.startsWith('::ffff:10.') || v.startsWith('::ffff:192.168.');
+// Private, loopback, link-local, carrier-NAT, documentation, multicast and reserved ranges.
+const BLOCK = new net.BlockList();
+for (const [a, n] of [['0.0.0.0', 8], ['10.0.0.0', 8], ['100.64.0.0', 10], ['127.0.0.0', 8], ['169.254.0.0', 16], ['172.16.0.0', 12], ['192.0.0.0', 24], ['192.0.2.0', 24], ['192.168.0.0', 16], ['198.18.0.0', 15], ['198.51.100.0', 24], ['203.0.113.0', 24], ['224.0.0.0', 4], ['240.0.0.0', 4]]) BLOCK.addSubnet(a, n, 'ipv4');
+for (const [a, n] of [['::', 96], ['::1', 128], ['64:ff9b::', 96], ['100::', 64], ['2001:db8::', 32], ['fc00::', 7], ['fe80::', 10], ['fec0::', 10], ['ff00::', 8]]) BLOCK.addSubnet(a, n, 'ipv6');
+export function privateIp(ip) {
+  if (net.isIPv4(ip)) return BLOCK.check(ip, 'ipv4');
+  if (!net.isIPv6(ip)) return true;
+  let v; try { v = new URL(`http://[${ip}]`).hostname.slice(1, -1); } catch { return true; } // canonical form: ::ffff:7f00:1
+  const m = v.match(/^::ffff:(?:0:)?([0-9a-f]{1,4}):([0-9a-f]{1,4})$/); // IPv4-mapped (and -translated): check the IPv4 inside
+  if (m) { const hi = parseInt(m[1], 16), lo = parseInt(m[2], 16); return BLOCK.check([hi >> 8, hi & 255, lo >> 8, lo & 255].join('.'), 'ipv4'); }
+  return BLOCK.check(v, 'ipv6');
 }
 // FF_ALLOW_LOCAL_FETCH=1 is for the end-to-end tests only (they serve a fixture page on localhost).
 const ALLOW_LOCAL = process.env.FF_ALLOW_LOCAL_FETCH === '1' && process.env.NODE_ENV !== 'production';
@@ -50,11 +54,17 @@ async function get(url, redirects = 0) {
     if (redirects > 4) throw new Error('Too many redirects.');
     return get(new URL(r.headers.get('location'), u).href, redirects + 1);
   }
-  if (!r.ok) throw new Error(`The site answered ${r.status} ${r.statusText}.`);
+  if (!r.ok) throw new Error(`That site wouldn't share the page (error ${r.status}).`);
   const len = +(r.headers.get('content-length') ?? 0);
   if (len > MAX_BYTES) throw new Error('That file is over 15 MB.');
-  const buf = Buffer.from(await r.arrayBuffer());
-  if (buf.length > MAX_BYTES) throw new Error('That file is over 15 MB.');
+  // read in chunks and stop at the limit (content-length can be missing or wrong)
+  const chunks = []; let size = 0;
+  for await (const c of r.body ?? []) {
+    size += c.length;
+    if (size > MAX_BYTES) { await r.body.cancel().catch(() => {}); throw new Error('That file is over 15 MB.'); }
+    chunks.push(c);
+  }
+  const buf = Buffer.concat(chunks.map(c => Buffer.from(c)));
   const type = (r.headers.get('content-type') ?? '').toLowerCase();
   return { url: u.href, buf, pdf: type.includes('pdf') || buf.subarray(0, 5).toString() === '%PDF-', type };
 }

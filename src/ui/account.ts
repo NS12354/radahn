@@ -4,20 +4,20 @@
  */
 import { $, esc, toast } from './dom';
 import {
-  accountsEnabled, currentUser, doneRecovering, inPasswordRecovery, initAccounts, onAccountChange,
+  accountsEnabled, currentUser, sessionKnown, doneRecovering, inPasswordRecovery, initAccounts, onAccountChange,
   resendCode, sendCode, sendReset, setPassword, signIn, signOut, signUp, syncNow, syncState, verifyCode,
   type CodeFor,
 } from '../app/cloud';
 
 type Mode = 'signin' | 'signup' | 'code' | 'reset' | 'newpass' | 'verify';
-let mode: Mode = 'signin', sentTo = '', sentFor: CodeFor = 'signin';
+let mode: Mode = 'signin', sentTo = '', sentFor: CodeFor = 'signin', why = '';
 let onChange: () => void = () => {};
 
 const page = () => document.getElementById('auth');
 
-export function showAuth(m: Mode = 'signin') {
+export function showAuth(m: Mode = 'signin', reason = '') {
   if (!accountsEnabled) { toast('Accounts aren’t set up on this site yet'); return; }
-  mode = m; render(); page()!.hidden = false;
+  mode = m; why = reason; render(); page()!.hidden = false;
   setTimeout(() => (page()!.querySelector('input') as HTMLInputElement | null)?.focus(), 0);
 }
 export function hideAuth() { const p = page(); if (p) p.hidden = true; }
@@ -41,7 +41,7 @@ function render(err = '') {
        <p class="auerr" role="alert">${esc(err)}</p>
        <button class="btn primary aubig" type="submit">${sentFor === 'reset' ? 'Continue' : 'Verify'}</button>
        <div class="aulinks"><button type="button" class="aulink" data-resend>Send a new code</button><button type="button" class="aulink" data-go="signin">Back to sign in</button></div>`
-    : `<p class="aulead">${t[1]}</p>
+    : `<p class="aulead">${why ? esc(why) : t[1]}</p>
        ${mode === 'newpass' ? pass('new-password') : email + (mode === 'signin' ? pass('current-password') : mode === 'signup' ? pass('new-password') : '')}
        <p class="auerr" role="alert">${esc(err)}</p>
        <button class="btn primary aubig" type="submit">${{ signin: 'Sign in', signup: 'Create account', code: 'Send code', reset: 'Send code', newpass: 'Save password' }[mode as Exclude<Mode, 'verify'>]}</button>
@@ -52,7 +52,7 @@ function render(err = '') {
     <div class="aulogo"><i></i>Formframe</div>
     <form novalidate><h1 id="auTitle">${t[0]}</h1>${body}</form>
     ${mode !== 'newpass' ? '<button type="button" class="aulink auskip" data-close>Continue without an account</button>' : ''}
-    <p class="aufine">Without an account, projects stay in this browser only.</p>
+    <p class="aufine">${isGuest() ? 'Without an account you can explore The First Step.' : 'Without an account, projects stay in this browser only.'}</p>
   </div>`;
   const emIn = p.querySelector('input[name=email]') as HTMLInputElement | null; if (emIn && typed) emIn.value = typed;
   if (err) (p.querySelector('input[name=password], input[name=code]') as HTMLInputElement | null)?.focus();
@@ -61,7 +61,7 @@ function render(err = '') {
     try { await resendCode(sentTo, sentFor); toast(`New code sent to ${sentTo}`); } catch (e: any) { render(e.message); return; }
     b.disabled = false;
   });
-  p.querySelectorAll<HTMLElement>('[data-go]').forEach(b => (b.onclick = () => { mode = b.dataset.go as Mode; render(); (p.querySelector('input') as HTMLInputElement | null)?.focus(); }));
+  p.querySelectorAll<HTMLElement>('[data-go]').forEach(b => (b.onclick = () => { mode = b.dataset.go as Mode; why = ''; render(); (p.querySelector('input') as HTMLInputElement | null)?.focus(); }));
   p.querySelector<HTMLElement>('[data-close]')?.addEventListener('click', hideAuth);
   const form = p.querySelector('form')!;
   form.onsubmit = async ev => {
@@ -93,6 +93,18 @@ function askCode(email: string, what: CodeFor) {
   (page()?.querySelector('input[name=code]') as HTMLInputElement | null)?.focus();
 }
 
+// ---- guests: with accounts on and nobody signed in, only The First Step opens
+/** Test-only escape (dev server only): the browser tests that aren't about accounts turn the gate off. */
+const gateOff = () => { try { return !!(import.meta as any).env?.DEV && localStorage.getItem('ff.guestGate') === 'off'; } catch { return false; } };
+export const isGuest = () => accountsEnabled && sessionKnown() && !currentUser() && !gateOff();
+/** True (and the sign-up page opens) when a guest tries something that needs a free account. */
+export function needAccount(): boolean {
+  if (!isGuest()) return false;
+  showAuth('signup', 'Create a free account to start your own projects, robots and scenes, and to open files. Without one you can explore The First Step.');
+  return true;
+}
+const markGuest = () => document.body.classList.toggle('guest', isGuest());
+
 // ---- account button (home screen and studio top bar)
 function chip(): string {
   const u = currentUser();
@@ -106,6 +118,7 @@ function statusText() {
   return s.state === 'saving' ? 'Saving to your account…' : s.state === 'offline' || s.state === 'error' ? s.msg : 'All projects saved to your account';
 }
 function renderButtons() {
+  markGuest();
   for (const id of ['hAccount', 'bAccount']) {
     const b = document.getElementById(id); if (!b) continue;
     b.hidden = !accountsEnabled;
@@ -140,6 +153,7 @@ export async function initAccountUI(refresh: () => void) {
   document.addEventListener('click', e => { const m = document.getElementById('acMenu'); if (m && !m.hidden && !(e.target as HTMLElement).closest('#acMenu')) m.hidden = true; });
   onAccountChange(() => {
     renderButtons();
+    if (currentUser() && why && !(page()?.hidden ?? true) && mode !== 'newpass' && mode !== 'verify') hideAuth(); // asked to sign up for something, then signed in
     if (inPasswordRecovery() && (page()?.hidden ?? true)) showAuth('newpass');
     // redraw the project lists whenever the sync comes to rest (signed in, signed out, or after pulling projects down)
     const st = syncState().state;

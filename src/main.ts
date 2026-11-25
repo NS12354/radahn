@@ -1,7 +1,8 @@
 import './styles.css';
 import * as THREE from 'three';
 import { syncLooseParts } from './app/loose';
-import { initAccountUI } from './ui/account';
+import { initAccountUI, isGuest, needAccount } from './ui/account';
+import { localChanged, onSignOut } from './app/cloud';
 import { worldDragStart, worldDragging } from './ui/worlddrag';
 import { initAssistant, assistantProjectChanged } from './ui/assistant';
 import { manageAiKey, setAccessBase } from './app/access';
@@ -25,7 +26,7 @@ import { robotProject, type RobotKind } from './app/robots';
 import { ElectronicsView } from './scene/electronics';
 import { gizmoBusy, initModeler, newBuiltModel, runAutoBuild, syncGizmo } from './ui/modeler';
 import { atHome, initHome, renderHome, showHome, hideHome } from './ui/home';
-import { initScene, inScene, openScene, sceneHistory } from './ui/scene';
+import { forgetOpenScene, initScene, inScene, openScene, saveOpenScene, sceneHistory } from './ui/scene';
 import { deleteScene, loadScene, newScene, newSceneId, saveScene } from './app/scene';
 import { endTour, initTour, startTour, tourSeen, touring } from './ui/tour';
 import { listen, modelerUrl, post } from './app/sync';
@@ -46,6 +47,9 @@ import { addComment, placePins, renderComments, renderPins } from './ui/review';
 import { exportFirmware } from './proto/stateMachine';
 
 const BASE = import.meta.env.BASE_URL;
+/** Where a guest's own copy of The First Step is remembered (see firstStep). */
+const GUEST_FIRST = 'ff.guest.firstStep';
+const guestFirstStep = () => { try { return localStorage.getItem(GUEST_FIRST); } catch { return null; } };
 
 const HINT_ELEC = '<b>Electronics</b> · wire a board and press <b>Run</b>: the parts on the 3D model follow the running code';
 const HINTS: Record<Mode, string> = {
@@ -117,27 +121,40 @@ class FormframeApp implements App {
     initTour(m => this.setMode(m));
     initHome({
       openProject: id => this.openProject(id),
-      newBlank: board => this.createProject(blankProject(board), 'Blank project'),
-      newExample: () => this.createProject(defaultProject(), 'The First Step'),
-      newRobot: (k: string) => this.createProject(robotProject(k as RobotKind), robotProject(k as RobotKind).name),
-      openFile: () => $('#fileProject').click(),
-      openFolder: () => this.openFolder(),
-      duplicateProject: id => this.duplicateProject(id),
+      newBlank: board => { if (!needAccount()) this.createProject(blankProject(board), 'Blank project'); },
+      newExample: () => this.firstStep(),
+      newRobot: (k: string) => { if (!needAccount()) this.createProject(robotProject(k as RobotKind), robotProject(k as RobotKind).name); },
+      openFile: () => { if (!needAccount()) $('#fileProject').click(); },
+      openFolder: () => { if (!needAccount()) this.openFolder(); },
+      duplicateProject: id => { if (!needAccount()) this.duplicateProject(id); },
       deleteProject: (id, name) => this.removeProject(id, name),
       startTour: () => this.tourFromHome(),
-      newScene: async () => { const sid = newSceneId(), sc = newScene(); await saveScene(sid, sc); hideHome(); await openScene(sid, sc); },
-      openScene: async sid => { const sc = await loadScene(sid).catch(() => null); if (!sc) { toast('That scene could not be found'); renderHome(); return; } hideHome(); await openScene(sid, sc); },
+      newScene: async () => { if (needAccount()) return; const sid = newSceneId(), sc = newScene(); await saveScene(sid, sc); hideHome(); await openScene(sid, sc); },
+      openScene: async sid => { if (needAccount()) return; const sc = await loadScene(sid).catch(() => null); if (!sc) { toast('That scene could not be found'); renderHome(); return; } hideHome(); await openScene(sid, sc); },
       deleteScene: async (sid, name) => { if (!window.confirm?.(`Delete the scene "${name}"? The robot projects in it are kept.`)) return; await deleteScene(sid); renderHome(); },
     });
-    void initAccountUI(() => { if (atHome()) void renderHome(); }); // optional accounts: saving projects to your account
+    onSignOut({
+      save: async () => { if (this.projectId) await this.flush(false, !!this.saveT); await saveOpenScene(); },
+      // signed out: close what was open without saving it again (the account's copies are about to leave this browser)
+      close: async () => {
+        await forgetOpenScene();
+        if (this.projectId) { clearTimeout(this.saveT); this.saveT = null; this.projectId = null; if (touring()) endTour(); stopElec(); stopIdle(); closeClaude(); this.blender.stop(); }
+        showHome();
+      },
+    });
+    try { if (sessionStorage.getItem('ff.smallOk')) document.body.classList.add('small-ok'); } catch { /* */ }
+    $('#smallOk').onclick = () => { document.body.classList.add('small-ok'); try { sessionStorage.setItem('ff.smallOk', '1'); } catch { /* */ } };
+    const accountsReady = initAccountUI(() => { if (atHome()) void renderHome(); }); // optional accounts: saving projects to your account
     initScene({ base: BASE, studio: this.viewport, openProject: pid => this.openProject(pid), goHome: () => showHome() });
     $('#hTour').classList.toggle('nudge', !tourSeen());
     listen(m => {
       if (m.type === 'built' && m.id === this.projectId) this.syncBuilt();
       if (m.type === 'blender-open' && m.id === this.projectId) this.openBlender();
     });
+    // know whether someone is signed in before showing what they can open (but don't hang on a slow network)
+    await Promise.race([accountsReady.catch(() => {}), new Promise(r => setTimeout(r, 2500))]);
     const want = new URLSearchParams(location.search).get('project');
-    if (want && await getMeta(want)) { history.replaceState(null, '', location.pathname); await this.openProject(want); }
+    if (want && await getMeta(want)) { history.replaceState(null, '', location.pathname); if (!(await this.openProject(want))) showHome(); }
     else showHome();
   }
 
@@ -215,6 +232,7 @@ class FormframeApp implements App {
     if (this.product instanceof BuiltProduct) { this.product.model = nb; this.product.build(); this.selected = null; renderDesign(this); }
     else { await this.rebuildProduct(); renderDesign(this); }
     this.refreshElectronics();
+    localChanged('project', id); // the modeler window saved it, but only this window talks to the account
     track('model', 'Edited the model in the 3D modeler');
     this.blender.changed();
   }
@@ -278,13 +296,16 @@ class FormframeApp implements App {
   }
 
   // ------------------------------------------------------------ project library
-  private async openProject(id: string) {
+  /** Open a project from the library; false when it didn't open. */
+  private async openProject(id: string): Promise<boolean> {
+    if (id !== guestFirstStep() && needAccount()) return false;
     try {
       const p = await loadProject(id);
-      if (!p) { toast('That project could not be found'); renderHome(); return; }
+      if (!p) { toast('That project could not be found'); renderHome(); return false; }
       this.dirHandle = null;
       await this.load(p, 'Opened ' + p.name, id);
-    } catch (e: any) { toast('Could not open: ' + e.message); }
+      return true;
+    } catch (e: any) { toast('Could not open: ' + e.message); return false; }
   }
   /** Add a project to the library and open it. */
   private async createProject(p: Project, msg: string) {
@@ -293,6 +314,15 @@ class FormframeApp implements App {
     await this.load(p, msg, id);
     if (p.product.source === 'none') this.setMode('design');
     coachProject();
+    return id;
+  }
+  /** The First Step. Guests get one copy that they keep coming back to (it goes up to their account when they make one). */
+  private async firstStep() {
+    if (!isGuest()) { await this.createProject(defaultProject(), 'The First Step'); return; }
+    const had = guestFirstStep();
+    if (had && await getMeta(had)) { await this.openProject(had); return; }
+    const id = await this.createProject(defaultProject(), 'The First Step');
+    try { localStorage.setItem(GUEST_FIRST, id); } catch { /* private window: a fresh copy next time */ }
   }
   private async duplicateProject(id: string) {
     const p = await loadProject(id), meta = await getMeta(id);
@@ -435,6 +465,7 @@ class FormframeApp implements App {
   }
   /** Bring an outside project (file, folder, drop) into the library. */
   private async importProject(p: Project, msg: string) {
+    if (needAccount()) return;
     const id = newProjectId();
     await saveProject(id, p, null);
     await this.load(p, msg, id);
@@ -443,7 +474,7 @@ class FormframeApp implements App {
   async importCad(f: File) {
     const fmt = formatOf(f.name);
     if (!fmt) { toast('Unsupported file. Use GLB, GLTF, STL or STEP.'); return; }
-    if (f.size > 60e6) { toast('Model is over 60 MB. Decimate it first.'); return; }
+    if (f.size > 60e6) { toast('That model is over 60 MB. Simplify it in your CAD tool first.'); return; }
     toast(`Importing ${f.name}…`);
     const buf = await f.arrayBuffer();
     try {
@@ -492,7 +523,7 @@ class FormframeApp implements App {
   // ------------------------------------------------------------ project files
   private async saveFolder() {
     const w = window as any;
-    if (!w.showDirectoryPicker) { toast('Folder save needs Chrome or Edge (File System Access API).'); return; }
+    if (!w.showDirectoryPicker) { toast('Saving to a folder needs Chrome or Edge.'); return; }
     try {
       const dir = this.dirHandle ?? (this.dirHandle = await w.showDirectoryPicker({ mode: 'readwrite' }));
       const write = async (path: string, data: string | ArrayBuffer) => {
@@ -565,13 +596,13 @@ class FormframeApp implements App {
       menu.classList.remove('show');
       const a = b.dataset.a;
       if (a === 'home') this.goHome();
-      if (a === 'newBlank') this.createProject(blankProject(this.project.electronics.board), 'Blank project');
-      if (a === 'newExample') this.createProject(defaultProject(), 'The First Step');
-      if (a === 'aikey') manageAiKey().then(r => { if (r) toast('Your Anthropic key is saved. AI features now use your account.'); }).catch(e => toast(e.message));
+      if (a === 'newBlank' && !needAccount()) this.createProject(blankProject(this.project.electronics.board), 'Blank project');
+      if (a === 'newExample') this.firstStep();
+      if (a === 'aikey') manageAiKey().then(r => { if (r) toast('Your Claude API key is saved. AI features now use it.'); }).catch(e => toast(e.message));
       if (a === 'coach') showCoach();
-      if (a === 'tour') startTour();
-      if (a === 'open') $('#fileProject').click();
-      if (a === 'openFolder') this.openFolder();
+      if (a === 'tour') this.tourFromHome(); // the tour is written for The First Step
+      if (a === 'open' && !needAccount()) $('#fileProject').click();
+      if (a === 'openFolder' && !needAccount()) this.openFolder();
       if (a === 'save') this.saveDownload();
       if (a === 'saveFolder') this.saveFolder();
       if (a === 'copy') copyText(serializeProject(this.project));

@@ -123,3 +123,70 @@ test('emails carry 6-digit codes: confirm a sign-up, sign in without a password,
   expect(errs).toEqual([]);
   await c.close();
 });
+
+test('guests only get The First Step until they make a free account', async ({ browser }) => {
+  test.setTimeout(90_000);
+  const fake = fakeSupabase();
+  const c = await browser.newContext(); await fake.attach(c);
+  const page = await c.newPage(); const errs = errors(page);
+  await home(page, { guest: true });
+  // home: The First Step and an offer of a free account; everything else is hidden
+  await expect(page.locator('#hExample')).toBeVisible();
+  await expect(page.locator('#hGuest')).toBeVisible();
+  for (const s of ['#hBlank', '#hOpen', '#hFolder', '#hRobots', '#sceneGrid', '#homeGrid']) await expect(page.locator(s)).toBeHidden();
+  await page.click('#hGuest [data-auth=signup]');
+  await expect(page.locator('#auth h1')).toHaveText('Create your account');
+  await page.click('#auth [data-close]');
+
+  // The First Step opens, and coming back to it opens the same copy rather than a new one
+  await page.click('#hExample b');
+  await page.waitForFunction(() => !!(window as any).formframe?.projectId);
+  const first = await page.evaluate(() => (window as any).formframe.projectId);
+  // anything else from the studio menu asks for an account
+  await page.click('#bMenu'); await page.click('#menu [data-a=newBlank]');
+  await expect(page.locator('#auth')).toBeVisible();
+  await expect(page.locator('#auth .aulead')).toContainText('free account');
+  await page.click('#auth [data-close]');
+  expect(await page.evaluate(() => (window as any).formframe.projectId)).toBe(first);
+  await page.click('#bHome');
+  await expect(page.locator('#home')).toBeVisible();
+  await page.click('#hExample b');
+  await page.waitForFunction(() => !!(window as any).formframe?.projectId);
+  expect(await page.evaluate(() => (window as any).formframe.projectId)).toBe(first);
+  await page.click('#bHome');
+
+  // with an account everything opens, and the guest's First Step goes up to it
+  await signInWith(page, 'cy@example.com', 'correct horse', true);
+  await expect(page.locator('#hBlank')).toBeVisible();
+  await expect(page.locator('#hGuest')).toBeHidden();
+  await expect.poll(() => fake.db.filter(r => r.kind === 'project').map(r => r.id)).toEqual([first]);
+  expect(errs).toEqual([]);
+  await c.close();
+});
+
+test('signing out with a project open closes it and leaves nothing behind for the next person', async ({ browser }) => {
+  test.setTimeout(90_000);
+  const fake = fakeSupabase();
+  const c = await browser.newContext(); await fake.attach(c);
+  const page = await c.newPage(); const errs = errors(page);
+  await home(page);
+  await signInWith(page, 'di@example.com', 'correct horse', true);
+  await expect(page.locator('#hAccount')).toHaveText('di');
+  await page.click('#hBlank b');
+  await page.waitForFunction(() => !!(window as any).formframe?.projectId);
+  await page.fill('#pname', 'Private work'); await page.press('#pname', 'Enter');
+  // sign out from the studio, straight after an edit
+  await page.click('#bAccount'); await page.click('#acMenu [data-a=out]');
+  await expect(page.locator('#home')).toBeVisible();
+  await expect(page.locator('#hAccount')).toHaveText('Sign in');
+  await page.waitForTimeout(1500); // any late save would land by now
+  await expect(page.locator('.pcard', { hasText: 'Private work' })).toHaveCount(0);
+  expect(fake.db.filter(r => r.kind === 'project' && r.name === 'Private work')).toHaveLength(1); // it's safe in the account
+  // the next person to sign in on this browser doesn't get it
+  await signInWith(page, 'eve@example.com', 'another horse', true);
+  await expect(page.locator('#hAccount')).toHaveText('eve');
+  await page.waitForTimeout(2500);
+  expect(fake.db.filter(r => r.user_id !== fake.users.get('di@example.com')!.id && r.name === 'Private work')).toHaveLength(0);
+  expect(errs).toEqual([]);
+  await c.close();
+});

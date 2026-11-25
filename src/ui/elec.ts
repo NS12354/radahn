@@ -119,8 +119,8 @@ async function compile(): Promise<string | null> {
       if (r?.ok) { const hex = await r.text(); out.textContent = '✓ Using the precompiled example (no compiler in this build)'; emitCompile('No compiler here, so the precompiled example sketch was used.', true); compiled = { key, hex }; return hex; }
     }
     out.className = 'compile show err';
-    out.textContent = HOSTED ? 'The hosted studio can’t compile edited Arduino code. Use the unedited example, add a .hex exported from Arduino IDE (Sketch → Export Compiled Binary) with the + tab, or run Formframe locally with `npm run dev`.' : 'No compiler available here. Run `npm run dev` locally (avr-gcc or arduino-cli), or add a .hex exported from Arduino IDE (Sketch → Export Compiled Binary) with the + tab.';
-    emitCompile('Compilation error: no AVR compiler is installed. Run `npm run setup:toolchain`, then restart `npm run dev`.', false);
+    out.textContent = HOSTED ? 'Edited Arduino code can’t be compiled on the web version. Undo your edits, switch to a Pico board (Python runs any code), or add a .hex file exported from the Arduino IDE with the + tab.' : 'No compiler available here. Run `npm run dev` locally (avr-gcc or arduino-cli), or add a .hex exported from Arduino IDE (Sketch → Export Compiled Binary) with the + tab.';
+    emitCompile(HOSTED ? 'Edited Arduino code can’t be compiled on the web version. Switch to a Pico board to run any code.' : 'Compilation error: no AVR compiler is installed. Run `npm run setup:toolchain`, then restart `npm run dev`.', false);
     return null;
   }
 }
@@ -585,7 +585,7 @@ export function initElec(app: App) {
     $$('#target button').forEach(x => x.classList.toggle('on', x === b));
     if (runtime?.running) await stop();
     if (target === 'physical') {
-      if (!SerialDeviceRuntime.supported()) serial('Web Serial is unavailable here. Use Chrome or Edge on the local dev server (npm run dev) to connect a real board.', 'w');
+      if (!SerialDeviceRuntime.supported()) serial(HOSTED ? 'Connecting a real board needs Chrome or Edge.' : 'Web Serial is unavailable here. Use Chrome or Edge to connect a real board.', 'w');
       else if (!dev.connected) { try { await dev.connect(); } catch (err: any) { serial(String(err.message || err), 'e'); } }
     }
     renderElec(A);
@@ -620,6 +620,6 @@ export function renderElec(app: App) {
   $('#fidelity').innerHTML = `<span class="fidelity ${fid}">${fid === 'physical' ? 'real hardware' : fid === 'emulated' ? 'cycle-level emulation' : 'behavioral sim'}</span>`;
   $('#boardNote').textContent = (target === 'physical' ? 'Runs on your board over USB (Web Serial). Prints "@ff" lines to mirror the 3D model; see lib/ff.py. ' : '') + (b.notes ?? '') + ` ${b.gpio.length} GPIO · ${b.adc.length ? 'ADC ' + b.adc.map(label).join(', ') : 'no ADC'} · $${b.cost}`;
   renderBench(); renderChecks(); renderTabs(); setRunUI();
-  const ide = ideName(b.lang); $('#bIde').textContent = ide + ' ↗'; $('#bIde').title = `Code this board the way you would on the real thing: opens ${ide} in its own window`;
+  const ide = ideName(b.lang); $('#bIde').textContent = 'Code window ↗'; $('#bIde').title = `Code this board the way you would on the real thing: opens a ${ide}-style editor in its own window`;
 }
 export const ideName = (lang: string) => (lang === 'python' ? 'Pi Desktop' : lang === 'arduino' ? 'Arduino IDE' : 'Thonny');

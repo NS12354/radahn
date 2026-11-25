@@ -3,6 +3,7 @@ import { BOARDS, boardOptions } from '../hw/library/boards';
 import { ROBOT_KINDS } from '../app/robots';
 import { listProjects, persistent, type ProjectMeta } from '../app/store';
 import { listScenes, type SceneMeta } from '../app/scene';
+import { showAuth } from './account';
 
 /** Actions the home screen asks the app to perform. */
 export interface HomeHost {
@@ -42,6 +43,7 @@ export function initHome(h: HomeHost) {
   $('#hOpen').onclick = () => host.openFile();
   $('#hFolder').onclick = () => host.openFolder();
   $('#hTour').onclick = () => host.startTour();
+  $('#hGuest').querySelectorAll<HTMLElement>('[data-auth]').forEach(b => (b.onclick = () => showAuth(b.dataset.auth as 'signup' | 'signin')));
   ($('#homeSearch') as HTMLInputElement).oninput = e => { query = (e.target as HTMLInputElement).value.trim().toLowerCase(); renderHome(); };
 }
 
@@ -59,7 +61,7 @@ export async function renderHome() {
   $('#homeSearch').style.display = all.length > 4 ? '' : 'none';
   $('#homeWarn').style.display = persistent ? 'none' : '';
   const g = $('#homeGrid'); g.innerHTML = '';
-  if (!all.length) { renderScenes(); g.appendChild(el('div', 'hempty', 'No projects yet. Start a blank one above, or open the The First Step to look around.')); return; }
+  if (!all.length) { renderScenes(); g.appendChild(el('div', 'hempty', 'No projects yet. Start a blank one above, or open The First Step to look around.')); return; }
   if (!list.length) { renderScenes(); g.appendChild(el('div', 'hempty', `No projects match “${esc(query)}”.`)); return; }
   for (const p of list) g.appendChild(card(p));
   renderScenes();

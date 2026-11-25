@@ -12,11 +12,11 @@ import { PART_LIBS } from '../hw/partcode';
 
 export type RobotKind = 'arm' | 'rover-avoid' | 'rover-line' | 'dog' | 'hexapod';
 export const ROBOT_KINDS: { id: RobotKind; name: string; blurb: string }[] = [
-  { id: 'arm', name: 'Robot arm', blurb: '4 axes + gripper, PCA9685, inverse kinematics, teach mode' },
-  { id: 'rover-avoid', name: 'Obstacle-avoiding rover', blurb: '2WD, TB6612, sonar, encoders, in a room with obstacles' },
-  { id: 'rover-line', name: 'Line follower', blurb: '2WD, two IR line sensors, on a track' },
-  { id: 'dog', name: 'Robot dog', blurb: '12 servos, creep gait, IMU balance' },
-  { id: 'hexapod', name: 'Hexapod', blurb: '18 servos on two PCA9685s, tripod gait' },
+  { id: 'arm', name: 'Robot arm', blurb: 'Four joints and a gripper. Teach it moves by hand, then let it pick and place' },
+  { id: 'rover-avoid', name: 'Obstacle-avoiding rover', blurb: 'Two-wheel rover that drives around a room and steers clear of obstacles' },
+  { id: 'rover-line', name: 'Line follower', blurb: 'Two-wheel rover that follows a line around a track' },
+  { id: 'dog', name: 'Robot dog', blurb: 'Four-legged walking robot that keeps its balance' },
+  { id: 'hexapod', name: 'Hexapod', blurb: 'Six-legged walking robot' },
 ];
 
 type V3 = [number, number, number];

@@ -8,6 +8,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600&family=Roboto:wght@400;500;700&family=Roboto+Flex:opsz,wght@8..144,400..700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 </head>
 <body class="m-design">
+<div id="smallScreen" role="status"><span>Formframe is built for a laptop or desktop screen. You can look around here, but editing works best on a bigger screen.</span><button type="button" class="btn" id="smallOk">OK</button></div>
 <header id="top">
   <button class="logo" id="bHome" title="All projects"><i></i>Formframe</button>
   <div class="menu">
@@ -17,13 +18,13 @@
       <button data-a="newBlank">New blank project</button>
       <button data-a="newExample">New from The First Step</button>
       <button data-a="open">Open project… <span>.json</span></button>
-      <button data-a="openFolder">Open project folder… <span>Chrome</span></button>
+      <button data-a="openFolder">Open project from a folder… <span>Chrome, Edge</span></button>
       <hr>
       <button data-a="save">Download project <span>⌘S</span></button>
-      <button data-a="saveFolder">Save to folder (Git-friendly) <span>Chrome</span></button>
-      <button data-a="copy">Copy project JSON</button>
+      <button data-a="saveFolder">Save to a folder… <span>Chrome, Edge</span></button>
+      <button data-a="copy">Copy project as text</button>
       <hr>
-      <button data-a="importCad">Import CAD model… <span>GLB · STL · STEP</span></button>
+      <button data-a="importCad">Import 3D model… <span>GLB · STL · STEP</span></button>
       <button data-a="parametric">Use built-in thermostat model</button>
       <button data-a="build">Build your own model</button>
       <button data-a="modeler">Open 3D modeler window <span>↗</span></button>
@@ -32,9 +33,9 @@
       <button data-a="autobuild">Auto build model from electronics</button>
       <hr>
       <button data-a="snapshot">Snapshot viewport (PNG)</button>
-      <button data-a="firmware">Export interaction firmware (C++)</button>
+      <button data-a="firmware">Export device code (Arduino)</button>
       <hr>
-      <button data-a="tour">Tutorial walkthrough</button>
+      <button data-a="tour">Take the tour</button>
       <button data-a="aikey">Claude API key…</button>
       <button data-a="coach">Show the coach (next steps)</button>
     </div>
@@ -53,7 +54,7 @@
   <div class="tb">
     <label class="simpletog" title="Simple hides expert settings. Turn on Advanced for everything."><input type="checkbox" id="bAdvanced"> Advanced</label>
     <button class="btn acbtn" id="bAccount" hidden>Sign in</button>
-    <button class="btn adv" id="bModeler" title="Open this project in the Blender-style 3D modeler (separate window)">3D Modeler ↗</button>
+    <button class="btn adv" id="bModeler" title="Open this project in the 3D modeler (separate window)">3D Modeler ↗</button>
     <button class="btn adv" id="bBlender" title="Open this project in Blender with a live two-way link">Blender ↗</button>
     <button class="btn" id="bExplode">Exploded view</button>
     <button class="btn primary" id="bPresent">Present</button>
@@ -93,7 +94,7 @@
     </div>
     <div class="sec mx"><h3>Add component</h3><div id="libList" class="lib"></div></div>
     <div class="sec mx"><h3>Electrical checks <span id="chkBadge"></span></h3><div id="chkList"></div></div>
-    <div class="sec mx adv"><h3>Electronics BOM</h3><table class="bom" id="ebom"></table></div>
+    <div class="sec mx adv"><h3>Electronics parts list</h3><table class="bom" id="ebom"></table></div>
   </aside>
 
   <section id="center">
@@ -101,7 +102,7 @@
       <div id="pins"></div>
       <div id="hint"></div>
       <div id="statebadge"></div>
-      <div id="vpTools"><button class="vpt" id="vpQuality" title="Shadows, ambient occlusion and glow. Fast mode is used automatically while firmware runs." data-ico="spark">High quality</button><button class="vpt" id="vpPhoto" title="Render a photo-realistic image of this view (path tracing)" data-ico="camera">Photo</button></div>
+      <div id="vpTools"><button class="vpt" id="vpQuality" title="Shadows and glow. Switches to fast mode while your code runs." data-ico="spark">High quality</button><button class="vpt" id="vpPhoto" title="Render a photo-realistic image of this view" data-ico="camera">Photo</button></div>
       <div id="photoBar" style="display:none"><span id="photoMsg">Rendering…</span><div class="pbar"><i id="photoProg"></i></div><button class="btn primary" id="photoSave">Save image</button><button class="btn" id="photoClose">Close</button></div>
       <div id="vpEmpty">
         <b>No model yet</b>
@@ -139,7 +140,7 @@
         <div class="row"><label>Process</label><select id="eProc" style="flex:1"><option value="im">Injection molded PC/ABS</option><option value="cnc">CNC aluminum, anodized</option><option value="sla">SLA print (prototype)</option></select></div>
       </div>
       <div class="sec" id="secFit"><h3>Fit check <span id="fitBadge"></span></h3><div id="fitList"></div><div class="note">Inner volume = diameter − walls − dial ring; depth − walls − lens; 1 mm clearance per layer.</div></div>
-      <div class="sec" id="secBom"><h3>BOM estimate <span>qty <input type="number" id="qty" min="1" step="1000" style="width:72px"></span></h3><table class="bom" id="bom"></table><div class="note">Placeholder pricing. Wire in supplier quotes for real numbers.</div></div>
+      <div class="sec" id="secBom"><h3>Cost estimate <span>qty <input type="number" id="qty" min="1" step="1000" style="width:72px"></span></h3><table class="bom" id="bom"></table><div class="note">Placeholder pricing. Wire in supplier quotes for real numbers.</div></div>
     </div>
 
     <div class="mode-only mp">
@@ -172,7 +173,7 @@
       <div class="editor"><pre id="gutter"></pre><textarea id="code" spellcheck="false" autocomplete="off" autocapitalize="off"></textarea></div>
       <div class="compile" id="compileOut"></div>
       <div class="runbar">
-        <span class="status" id="runStatus">idle</span>
+        <span class="status" id="runStatus">Not running</span>
         <button class="btn" id="bIde" title="Open the coding environment for this board in its own window">IDE ↗</button>
         <button class="btn" id="bTpl" title="Regenerate starter code from the current wiring">Reset code</button>
         <button class="btn" id="bCompile">Compile</button>
@@ -180,7 +181,7 @@
       </div>
       <div class="serhead"><button class="ptab on" id="tabSerial">Serial monitor</button><button class="ptab" id="tabAsst" title="Ask Claude about this project, or to write or fix the code">Claude</button><button class="ptab" id="tabClaude" title="Claude Code in a terminal (local only)">Claude Code</button><span id="runState"></span><button class="btn" id="bClr">Clear</button></div>
       <div id="serial"></div>
-      <div id="serialIn"><input id="serialInput" placeholder="Send to REPL / Serial  (Enter · Ctrl-C to interrupt)" spellcheck="false"></div>
+      <div id="serialIn"><input id="serialInput" placeholder="Type a message for the board and press Enter (Ctrl-C stops the code)" spellcheck="false"></div>
       <div id="asstPane">
         <div class="asbar"><span>Claude sees your board, wiring and code. Changes wait for you to Apply.</span><button class="btn" id="asNew">New chat</button></div>
         <div id="asLog" aria-live="polite"></div>
@@ -207,11 +208,14 @@
     <div class="hhead"><div class="logo"><i></i>Formframe</div><button class="btn" id="hTour" data-ico="play">Take the tour</button><button class="btn acbtn" id="hAccount" hidden>Sign in</button></div>
     <h2>Start something</h2>
     <div class="starts">
-      <div class="start" id="hBlank" role="button" tabindex="0"><div class="ic ic-blank"></div><b>Blank project</b><span>No model, no parts, no code. Board: <select id="homeBoard"></select></span></div>
+      <div class="start members" id="hBlank" role="button" tabindex="0"><div class="ic ic-blank"></div><b>Blank project</b><span>No model, no parts, no code. Board: <select id="homeBoard"></select></span></div>
       <button class="start" id="hExample"><div class="ic ic-ex"></div><b>The First Step</b><span>A finished round thermostat with firmware, a good place to explore</span></button>
-      <button class="start" id="hOpen"><div class="ic ic-open"></div><b>Open file…</b><span>Import a .formframe.json project</span></button>
-      <button class="start" id="hFolder"><div class="ic ic-folder"></div><b>Open folder…</b><span>A project saved to a Git folder (Chrome, Edge)</span></button>
+      <button class="start members" id="hOpen"><div class="ic ic-open"></div><b>Open file…</b><span>Import a .formframe.json project</span></button>
+      <button class="start members" id="hFolder"><div class="ic ic-folder"></div><b>Open folder…</b><span>A project you saved to a folder on this computer (Chrome or Edge)</span></button>
+      <div class="start guestnote" id="hGuest"><div class="ic ic-lock"></div><b>More with a free account</b><span>Blank projects, robots, scenes, your saved projects and opening files all need a free account. Your work is saved to it and opens on any computer.</span>
+        <span class="gacts"><button class="btn primary" type="button" data-auth="signup">Create free account</button><button class="btn" type="button" data-auth="signin">Sign in</button></span></div>
     </div>
+    <div class="members">
     <h2>Robots</h2>
     <div class="starts robots" id="hRobots"></div>
     <h2>Scenes <span>several robots in one world, simulated together</span></h2>
@@ -219,6 +223,7 @@
     <div class="hrow"><h2>Your projects <span id="homeCount"></span></h2><input type="text" id="homeSearch" placeholder="Search projects" spellcheck="false"></div>
     <div class="note" id="homeWarn" style="display:none">This browser is blocking storage, so projects only last until you close the tab. Download them from the Project menu to keep them.</div>
     <div id="homeGrid"></div>
+    </div>
   </div>
 </div>
 

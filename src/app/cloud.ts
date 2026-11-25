@@ -33,8 +33,13 @@ export const accountsEnabled = !!(URL_ && KEY);
 let sb: SupabaseClient | null = null;
 export const client = () => (sb ??= accountsEnabled ? createClient(URL_!, KEY!, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: 'pkce' } }) : null);
 
-let user: User | null = null;
+let user: User | null = null, known = false;
 export const currentUser = () => user;
+/** False until the saved session (if any) has been restored, so nobody is treated as signed out too early. */
+export const sessionKnown = () => known;
+/** The app saves what's open before signing out, and closes it afterwards (so nothing is re-saved without an owner). */
+let signOutHooks: { save?: () => Promise<void>; close?: () => Promise<void> | void } = {};
+export function onSignOut(h: typeof signOutHooks) { signOutHooks = h; }
 export type SyncState = 'off' | 'idle' | 'saving' | 'offline' | 'error';
 let state: SyncState = 'off', stateMsg = '';
 const listeners = new Set<() => void>();
@@ -112,12 +117,12 @@ async function doSync() {
       for (const l of local) {
         if (l.owner && l.owner !== uid) continue; // someone else's leftovers: not ours to upload
         const r = remote.get(`${kind}:${l.id}`);
-        if (r?.deleted) { if (l.owner === uid) await lib.remove(l.id); continue; } // deleted on another computer
+        if (r?.deleted) { if (l.owner === uid && !pending.has(`${kind}:${l.id}`)) await lib.remove(l.id); continue; } // deleted on another computer (unless edited here since)
         if (!r || l.updated > r.updated) pending.set(`${kind}:${l.id}`, { kind, id: l.id }); // newer here (or new): upload
         else if (l.owner !== uid) await lib.own(l.id, uid);
       }
       for (const r of remote.values()) {
-        if (r.kind !== kind || r.deleted) continue;
+        if (r.kind !== kind || r.deleted || pending.get(`${kind}:${r.id}`)?.del) continue; // deleted here, not sent yet: don't bring it back
         const l = localIds.get(r.id);
         if (l && l.updated >= r.updated) continue;
         const { data: full, error: e2 } = await c.from('documents').select('body').match({ user_id: uid, kind, id: r.id }).single();
@@ -184,10 +189,12 @@ export async function setPassword(password: string) {
 }
 export async function signOut() {
   const c = client(), uid = user?.id; if (!c) return;
+  await signOutHooks.save?.().catch(() => { /* still try to send what's queued */ });
   for (let i = 0; i < 3 && pending.size; i++) await flushUploads().catch(() => { /* best effort */ }); // saves that land while we sign out
   const unsent = pending.size > 0;
   if (unsent && !window.confirm?.('Some changes haven’t reached your account yet. Sign out anyway? They stay in this browser.')) return;
   await c.auth.signOut();
+  await signOutHooks.close?.();
   if (uid && !unsent) await clearAccountCopies(uid);
   pending.clear(); remember();
   emit(); // the lists redraw without the account's projects
@@ -209,8 +216,8 @@ export async function initAccounts() {
     emit();
     if (user && user.id !== before) setTimeout(() => void syncNow(), 0); // can't await Supabase calls inside this callback
   });
-  const { data } = await c.auth.getSession();
-  user = data.session?.user ?? null;
+  const { data } = await c.auth.getSession().catch(() => ({ data: { session: null } }));
+  user = data.session?.user ?? null; known = true;
   if (user) { setState('idle'); void syncNow(); }
   window.addEventListener('online', () => { if (user) void syncNow(); });
 }

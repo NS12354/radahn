@@ -10,18 +10,18 @@ interface Step { sel?: string; mode?: Mode; title: string; body: string }
 
 const STEPS: Step[] = [
   { title: 'Welcome to Formframe', body: 'This is a quick tour of the studio. Formframe puts a product’s form, its on-device UI, its interaction logic and its real firmware in one canvas. Use <kbd>→</kbd> / <kbd>←</kbd> to move, <kbd>Esc</kbd> to leave.' },
-  { sel: '#modes', mode: 'design', title: 'Four modes', body: '<b>Design</b> the form, <b>Prototype</b> the interactions, wire and program the <b>Electronics</b>, then <b>Review</b> with comments. All four work on the same project.' },
+  { sel: '#modes', mode: 'design', title: 'The main modes', body: '<b>Design</b> the form, <b>Prototype</b> the interactions, wire and program the <b>Electronics</b>, then <b>Review</b> with comments. They all work on the same project.' },
   { sel: '#viewport', mode: 'design', title: 'The product', body: 'Drag to orbit and scroll to zoom. In Design mode you can click a part to select it. <b>Exploded view</b> at the top right pulls the housing apart.' },
   { sel: '#left', mode: 'design', title: 'Parts and CAD', body: 'Here are the parts of the built-in thermostat model. To use your own model, drop in a <b>GLB, STL or STEP</b> file and bind its meshes to roles (Dial, Screen, Press, LED), and the rest of the app will drive them.' },
-  { sel: '#right', mode: 'design', title: 'Inspector, fit and cost', body: 'Change a part’s color and finish, resize the enclosure, and watch the <b>fit check</b> and <b>BOM estimate</b> update as internal components go in and out.' },
+  { sel: '#right', mode: 'design', title: 'Inspector, fit and cost', body: 'Change a part’s color and finish, resize the enclosure, and watch the <b>fit check</b> and <b>cost estimate</b> update as internal components go in and out.' },
   { sel: '#right', mode: 'proto', title: 'Interactions', body: 'Each row is a transition: <i>in this state, on this trigger, go to that state</i>, with optional LED, haptic and click feedback. Try it: drag the dial in the viewport, or click the display.' },
   { sel: '#bottom', mode: 'proto', title: 'State machine and log', body: 'The graph draws your interaction table. The event log shows each event; <span style="color:var(--warn)">amber</span> lines are events your spec doesn’t handle yet.' },
-  { sel: '#right .me .sec', mode: 'elec', title: 'Pick a board', body: 'The Pico and the Uno run <b>real firmware</b> on an emulated chip. The ESP32 boards use a behavioral simulation. Switch to <b>Physical board</b> to run on real hardware over USB.' },
+  { sel: '#right .me .sec', mode: 'elec', title: 'Pick a board', body: 'Some boards run your code exactly as the real chip would; others use a close simulation. Switch to <b>Physical board</b> to run on a real board plugged in by USB.' },
   { sel: '#left', mode: 'elec', title: 'Add parts and wire them', body: 'Add components from the library and pins are assigned for you. You can reassign them on the bench below. <b>Electrical checks</b> catch pin conflicts, overcurrent and missing pull-ups as you go.' },
   { sel: '#right .me', mode: 'elec', title: 'Code and Run', body: 'Edit the firmware, then press <b>Run</b>. Turning the dial and pressing the display on the 3D model drives the running code, and output shows in the serial monitor.' },
   { sel: '#viewport', mode: 'review', title: 'Review', body: 'Click anywhere on the model to pin a comment there. Comments are saved with the project.' },
-  { sel: '#bMenu', mode: 'design', title: 'Save and share', body: 'Projects autosave in this browser. Use this menu to download the project as JSON, save it to a Git-friendly folder, import CAD or export firmware.' },
-  { sel: '.logo', mode: 'design', title: 'Your projects', body: 'Click the logo to get back to all your projects, where you can start a new blank project or duplicate one.' },
+  { sel: '#bMenu', mode: 'design', title: 'Save and share', body: 'Your work saves automatically (to your account when you’re signed in). Use this menu to download a copy, import a 3D model, or export the device code.' },
+  { sel: '.logo', mode: 'design', title: 'Your projects', body: 'Click the logo to get back to the home screen and all your projects.' },
 ];
 
 let i = -1;

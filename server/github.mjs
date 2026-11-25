@@ -67,7 +67,7 @@ export async function githubRoute({ method, route, q, body, cookie, contentType,
       // ---- sign in with GitHub (device flow: the user types a code on github.com)
       if (route === 'device/start' && method === 'POST') {
         if (!clientId()) return send(400, { error: 'Sign in with GitHub needs GITHUB_CLIENT_ID in .env (an OAuth app with device flow enabled).' });
-        const r = await fetch('https://github.com/login/device/code', { method: 'POST', headers: { accept: 'application/json', 'content-type': 'application/json' }, body: JSON.stringify({ client_id: clientId(), scope: SCOPES }) });
+        const r = await fetch('https://github.com/login/device/code', { method: 'POST', headers: { accept: 'application/json', 'content-type': 'application/json' }, body: JSON.stringify({ client_id: clientId(), scope: SCOPES }), signal: AbortSignal.timeout(15000) });
         const j = await r.json();
         if (!r.ok || j.error) return send(400, { error: j.error_description ?? 'GitHub refused the sign-in request. Is device flow enabled for the OAuth app?' });
         save({ ...s, device: { code: j.device_code, interval: j.interval ?? 5, expires: Date.now() + j.expires_in * 1000 } });
@@ -76,7 +76,7 @@ export async function githubRoute({ method, route, q, body, cookie, contentType,
       if (route === 'device/poll' && method === 'POST') {
         if (!s.device) return send(400, { error: 'No sign-in in progress.' });
         if (Date.now() > s.device.expires) { save({ ...s, device: undefined }); return send(200, { status: 'expired' }); }
-        const r = await fetch('https://github.com/login/oauth/access_token', { method: 'POST', headers: { accept: 'application/json', 'content-type': 'application/json' }, body: JSON.stringify({ client_id: clientId(), device_code: s.device.code, grant_type: 'urn:ietf:params:oauth:grant-type:device_code' }) });
+        const r = await fetch('https://github.com/login/oauth/access_token', { method: 'POST', headers: { accept: 'application/json', 'content-type': 'application/json' }, body: JSON.stringify({ client_id: clientId(), device_code: s.device.code, grant_type: 'urn:ietf:params:oauth:grant-type:device_code' }), signal: AbortSignal.timeout(15000) });
         const j = await r.json();
         if (j.access_token) { const u = await gh(j.access_token, '/user'); save({ token: j.access_token, user: user(u) }); return send(200, { status: 'ok', user: s.user }); }
         if (j.error === 'slow_down') { save({ ...s, device: { ...s.device, interval: s.device.interval + 5 } }); return send(200, { status: 'pending', interval: s.device.interval }); }

@@ -143,7 +143,7 @@ async function send() {
   try {
     const r = await aiFetch(A.base + 'api/assistant', { messages: [...c.history, turn] });
     if (!r) throw new Error('Could not reach the Formframe server.');
-    if (r.status === 404) throw new Error('This build has no server for Claude. Run npm run dev.');
+    if (r.status === 404) throw new Error('Claude isn’t available right now. Try again later.');
     if (!r.ok || !r.body) { const j = await r.json().catch(() => ({})); throw new Error(j.error ?? `Server error ${r.status}`); }
     const reader = r.body.getReader(), dec = new TextDecoder();
     let buf = '', done: any = null;

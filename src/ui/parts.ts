@@ -43,8 +43,8 @@ async function read() {
   $('#bPartUrl').setAttribute('disabled', '');
   try {
     const r = await aiFetch(A.base + 'api/part-from-url', { url });
-    if (!r) throw new Error('Could not reach the Formframe dev server. Reading links needs `npm run dev`.');
-    if (r.status === 404) throw new Error('This build has no server, so it can’t read links. Run `npm run dev`, or define the part by hand.');
+    if (!r) throw new Error('Couldn’t reach the server to read that link. Check your connection and try again, or add the part by hand.');
+    if (r.status === 404) throw new Error('Reading links isn’t available right now. Add the part by hand instead.');
     const j = await r.json().catch(() => ({ error: `Server error ${r.status}` }));
     if (!r.ok || j.error) throw new Error(j.error ?? `Server error ${r.status}`);
     draft = specFromExtraction(j.part, { url: j.url, datasheet: j.datasheet, source: j.source }, takenIds());

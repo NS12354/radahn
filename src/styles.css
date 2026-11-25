@@ -934,3 +934,27 @@ body.asst-on .me .editor{flex:1 1 40%;min-height:120px}
 @media (max-width:480px){.aucard{padding:28px 20px 20px;border-radius:20px}}
 .rpatt{border:0;background:var(--sel);color:var(--accent);font:inherit;font-size:11px;font-weight:500;border-radius:999px;padding:2px 8px;margin-left:4px;cursor:pointer}
 .rpatt:hover{filter:brightness(.95)}
+
+/* guests (accounts on, not signed in): only The First Step, plus a card offering a free account */
+.guestnote{display:none}
+body.guest #home .members{display:none}
+body.guest #home .guestnote{display:flex;cursor:default;grid-column:span 2}
+body.guest #home .guestnote:hover{border-color:var(--line)}
+.guestnote .gacts{display:flex;gap:8px;flex-wrap:wrap;margin-top:auto;padding-top:10px}
+.ic-lock{background:#e8f0fe}
+.ic-lock::after{content:'';position:absolute;inset:11px;background:var(--accent);-webkit-mask:var(--m) center/contain no-repeat;mask:var(--m) center/contain no-repeat;--m:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='5' y='11' width='14' height='9' rx='2'/%3E%3Cpath d='M8 11V8a4 4 0 0 1 8 0v3'/%3E%3C/svg%3E")}
+@media (max-width:520px){body.guest #home .guestnote{grid-column:auto}}
+
+#statebadge:empty{display:none}
+
+/* phones: tidy home header, and say once that the studio wants a bigger screen */
+#smallScreen{display:none}
+@media (max-width:760px){
+  body:not(.small-ok) #smallScreen{display:flex;position:fixed;left:12px;right:12px;bottom:12px;z-index:200;gap:12px;align-items:center;padding:12px 14px;border-radius:14px;background:var(--panel);border:1px solid var(--line);box-shadow:0 6px 24px #0002;font-size:13px;line-height:1.45;color:var(--text)}
+  #smallScreen .btn{flex:none}
+}
+@media (max-width:520px){
+  .hhead{flex-wrap:wrap;gap:12px}
+  .hhead .logo{flex:1 1 auto}
+  .hhead #hTour{order:3;flex:1 1 100%;justify-content:center}
+}

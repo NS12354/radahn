@@ -105,6 +105,16 @@ export async function openScene(sceneId: string, s: Scene) {
   renderLog();
   clearTimeout(hist.t); hist.undo = []; hist.redo = []; hist.cur = JSON.stringify(s); hist.t = 0;
 }
+/** Signing out: save the open scene now, then (once signed out) close it without saving again. */
+export async function saveOpenScene() { clearTimeout(saveT); if (scene && id) await saveScene(id, scene, thumb()).catch(() => {}); }
+export async function forgetOpenScene() {
+  if (!document.body.classList.contains('at-scene')) return;
+  clearTimeout(saveT); id = ''; scene = null;
+  await twin?.stopAll();
+  document.body.classList.remove('at-scene');
+  if (vp) vp.paused = true;
+  host.studio.paused = false;
+}
 async function close() {
   await twin?.stopAll();
   flush();
@@ -309,7 +319,7 @@ const payload = async (r: TwinRobot): Promise<Record<string, string> | string> =
   serial(r.def.id, `Compiling ${r.def.name}'s sketch…\n`, 's');
   try {
     const res = await fetch(host.base + 'api/compile', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ files: src, board: r.board.id }) });
-    const j = await res.json().catch(() => ({ error: 'No compiler here. Run `npm run dev` locally.' }));
+    const j = await res.json().catch(() => ({ error: 'Arduino code can’t be compiled on the web version. Use a Pico board (Python) for this robot.' }));
     return res.ok ? { 'firmware.hex': j.hex } : `${r.def.name}: ${j.error}`;
   } catch { return `${r.def.name}: no compiler available. Run \`npm run dev\` locally, or add a .hex to its project.`; }
 };
