@@ -13,6 +13,7 @@
  */
 import * as THREE from 'three';
 import { $, askSave, el, esc, toast } from './dom';
+import { glNotice } from './glnotice';
 import { Viewport } from '../scene/viewport';
 import { BuiltProduct, drawWorld } from '../scene/built';
 import { displayComps } from '../app/screenpart';
@@ -181,6 +182,7 @@ function addView(def: SceneRobot, p: Project) {
 // ------------------------------------------------------------------ 3D
 function setupViewport() {
   vp = new Viewport($('#swView'));
+  glNotice(vp, $('#swView'), { works: 'The robots, Run all, the log and saving still work; only the 3D picture is missing.' });
   vp.scene.add(worldG);
   vp.showFloor(false);
   vp.paused = true;

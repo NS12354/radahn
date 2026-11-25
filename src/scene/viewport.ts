@@ -9,6 +9,33 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 
 export type Quality = 'high' | 'fast';
 
+/** Can this browser make a WebGL context? (Checked before building the renderer.) */
+export function webglAvailable(): { ok: true } | { ok: false; why: string } {
+  try {
+    if (typeof WebGLRenderingContext === 'undefined') return { ok: false, why: 'This browser has no WebGL support.' };
+    const c = document.createElement('canvas');
+    const gl = c.getContext('webgl2') ?? c.getContext('webgl');
+    if (!gl) return { ok: false, why: 'WebGL is turned off or blocked (browser settings, a policy, or the graphics driver).' };
+    (gl as any).getExtension?.('WEBGL_lose_context')?.loseContext();
+    return { ok: true };
+  } catch (e: any) { return { ok: false, why: `WebGL failed to start: ${e?.message ?? e}` }; }
+}
+
+/**
+ * Stands in for the WebGL renderer when 3D can't run: it draws nothing, but the scene,
+ * picking maths, simulation ticks and the rest of the app keep working.
+ */
+function nullRenderer(): THREE.WebGLRenderer {
+  const canvas = document.createElement('canvas'); let pr = 1;
+  return {
+    domElement: canvas, shadowMap: { enabled: false, type: THREE.PCFSoftShadowMap }, outputColorSpace: THREE.SRGBColorSpace,
+    toneMapping: THREE.NoToneMapping, toneMappingExposure: 1, info: { render: {}, memory: {} },
+    setPixelRatio(v: number) { pr = v; }, getPixelRatio: () => pr,
+    setSize(w: number, h: number) { canvas.width = w; canvas.height = h; },
+    render() {}, dispose() {}, getContext: () => null,
+  } as unknown as THREE.WebGLRenderer;
+}
+
 /**
  * Renderer, camera, lighting and picking.
  *
@@ -31,9 +58,9 @@ export class Viewport {
   /** Pause normal rendering (photo mode draws into the canvas itself). */
   paused = false;
   key!: THREE.DirectionalLight;
-  private composer: EffectComposer;
-  private gtao: GTAOPass;
-  private bloom: UnrealBloomPass;
+  private composer: EffectComposer | null = null;
+  private gtao: GTAOPass | null = null;
+  private bloom: UnrealBloomPass | null = null;
   private ray = new THREE.Raycaster();
   private tickers: ((dt: number, now: number) => void)[] = [];
   private last = performance.now();
@@ -41,8 +68,18 @@ export class Viewport {
   private ground!: THREE.Mesh;
   private contact!: THREE.Mesh;
 
+  /** Why 3D isn't drawing (null while it works). The rest of the app keeps going either way. */
+  failure: string | null = null;
+  /** Told when 3D stops or starts drawing (the studio shows or hides its notice). */
+  onFailure: (why: string | null) => void = () => {};
+
   constructor(public el: HTMLElement) {
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+    const gl = webglAvailable();
+    let renderer: THREE.WebGLRenderer | null = null;
+    if (gl.ok) { try { renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true }); } catch (e: any) { this.failure = `The 3D renderer failed to start: ${e?.message ?? e}`; } }
+    else this.failure = gl.why;
+    this.renderer = renderer ?? nullRenderer();
+    if (!renderer) console.warn('[formframe] 3D view unavailable:', this.failure);
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -50,25 +87,32 @@ export class Viewport {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     el.prepend(this.renderer.domElement);
+    // the graphics driver can drop the context mid-session (GPU reset, sleep): say so, and pick up again when it's back
+    this.renderer.domElement.addEventListener('webglcontextlost', e => { e.preventDefault(); this.failure = 'The graphics driver reset the 3D view (this can happen after sleep or a GPU crash).'; this.onFailure(this.failure); });
+    this.renderer.domElement.addEventListener('webglcontextrestored', () => { this.failure = null; this.onFailure(null); });
     this.camera.position.set(7.5, 4.2, 23);
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.08;
     this.controls.minDistance = 2;
     this.controls.maxDistance = 400;
-    this.studio();
+    this.studio(!!renderer);
 
     // post-processing: multisampled render → GTAO → bloom → tone map / sRGB
-    const rt = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 });
-    this.composer = new EffectComposer(this.renderer, rt);
-    this.composer.addPass(new RenderPass(this.scene, this.camera));
-    this.gtao = new GTAOPass(this.scene, this.camera, 1, 1);
-    this.gtao.output = GTAOPass.OUTPUT.Default;
-    this.gtao.blendIntensity = 0.85;
-    this.composer.addPass(this.gtao);
-    this.bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.35, 0.4, 1.6); // only emissive LEDs / lit screens bloom
-    this.composer.addPass(this.bloom);
-    this.composer.addPass(new OutputPass());
+    if (renderer) {
+      try {
+        const rt = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 });
+        this.composer = new EffectComposer(this.renderer, rt);
+        this.composer.addPass(new RenderPass(this.scene, this.camera));
+        this.gtao = new GTAOPass(this.scene, this.camera, 1, 1);
+        this.gtao.output = GTAOPass.OUTPUT.Default;
+        this.gtao.blendIntensity = 0.85;
+        this.composer.addPass(this.gtao);
+        this.bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.35, 0.4, 1.6); // only emissive LEDs / lit screens bloom
+        this.composer.addPass(this.bloom);
+        this.composer.addPass(new OutputPass());
+      } catch (e) { console.warn('[formframe] post-processing unavailable, drawing plainly', e); this.composer = null; }
+    }
 
     new ResizeObserver(() => this.resize()).observe(el);
     this.resize();
@@ -82,8 +126,9 @@ export class Viewport {
       this.controls.update();
       for (const t of this.tickers) t(dt, now);
       if (this.paused) return;
+      if (this.failure) return; // the simulation above keeps ticking; there's just nothing to draw on
       if (now - this.shadowT > 400) { this.shadowT = now; this.castShadows(); }
-      this.render();
+      try { this.render(); } catch (e: any) { this.failure = `Drawing the 3D view failed: ${e?.message ?? e}`; console.warn('[formframe]', this.failure, e); this.onFailure(this.failure); }
     };
     requestAnimationFrame(loop);
   }
@@ -94,11 +139,11 @@ export class Viewport {
     if (this.key.castShadow !== high) this.key.castShadow = high;
     const pr = high ? Math.min(devicePixelRatio, 2) : 1;
     if (this.renderer.getPixelRatio() !== pr) { this.renderer.setPixelRatio(pr); this.resize(); }
-    if (this.quality === 'high' && !this.throttle) this.composer.render();
+    if (this.quality === 'high' && !this.throttle && this.composer) this.composer.render();
     else { this.renderer.toneMapping = THREE.ACESFilmicToneMapping; this.renderer.render(this.scene, this.camera); }
   }
 
-  private studio() {
+  private studio(gl: boolean) {
     // backdrop: a soft studio gradient (post-processing makes the canvas opaque, so the scene paints its own)
     const bg = document.createElement('canvas'); bg.width = 4; bg.height = 256;
     const bgc = bg.getContext('2d')!, bgg = bgc.createLinearGradient(0, 0, 0, 256);
@@ -107,8 +152,7 @@ export class Viewport {
     const bgt = new THREE.CanvasTexture(bg); bgt.colorSpace = THREE.SRGBColorSpace;
     this.scene.background = bgt;
     // image-based lighting: a studio room with softboxes (three's RoomEnvironment), slightly warm
-    const pm = new THREE.PMREMGenerator(this.renderer);
-    this.scene.environment = pm.fromScene(new RoomEnvironment(this.renderer), 0.03).texture;
+    if (gl) { const pm = new THREE.PMREMGenerator(this.renderer); this.scene.environment = pm.fromScene(new RoomEnvironment(this.renderer), 0.03).texture; }
     (this.scene as any).environmentIntensity = 0.75;
     this.scene.add(new THREE.HemisphereLight(0xffffff, 0x2a2a30, 0.25));
     const key = (this.key = new THREE.DirectionalLight(0xfff4e8, 1.7));

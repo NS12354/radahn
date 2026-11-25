@@ -18,6 +18,7 @@ export function initViewTools(A: App) {
   const TARGET = 300;
   $('#vpPhoto').onclick = () => {
     if (session) return;
+    if (V.failure) { toast('Photo mode needs the 3D view, which isn\'t available here'); return; }
     bar.style.display = ''; $('#vpTools').style.display = 'none';
     msg.textContent = 'Path tracing… move nothing, it gets sharper every pass';
     session = startPhoto(V, n => { if (n < 0) { msg.textContent = 'Preparing the scene for path tracing (a few seconds on a GPU)…'; return; } prog.style.width = `${Math.min(100, (n / TARGET) * 100)}%`; msg.textContent = n >= TARGET ? `Done: ${n} samples` : `Path tracing: ${n} / ${TARGET} samples`; }, TARGET);

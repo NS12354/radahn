@@ -4,6 +4,8 @@ import { syncLooseParts } from './app/loose';
 import { initAccountUI, isGuest, needAccount } from './ui/account';
 import { GUEST_FIRST, currentUser, localChanged, onSignOut } from './app/cloud';
 import { worldDragStart, worldDragging } from './ui/worlddrag';
+import { glNotice } from './ui/glnotice';
+import { COMPONENTS } from './hw/library/components';
 import { initWorldEdit, worldEditFrame, worldGizmoBusy } from './ui/worldedit';
 import { initAssistant, assistantProjectChanged } from './ui/assistant';
 import { manageAiKey, setAccessBase } from './app/access';
@@ -40,7 +42,7 @@ import { initClaude, claudeFilesChanged, claudeContextChanged, closeClaude } fro
 import { initPlan, render as renderPlan, resetPlanUndo } from './ui/plan';
 import { track } from './ui/track';
 import type { App, Mode } from './ui/app';
-import { $, $$, askSave, b64decode, b64encode, closeModal, copyText, download, modal, toast } from './ui/dom';
+import { $, $$, askSave, b64decode, b64encode, closeModal, copyText, download, esc, modal, toast } from './ui/dom';
 import { initDesign, renderDesign } from './ui/design';
 import { armIdle, drawGraph, fire, initProto, redrawScreen, renderLive, renderScreens, renderTrs, stopIdle } from './ui/proto';
 import { drawWires, elecDial, elecFrame, elecPress, initElec, paintIdleScreen, renderElec, stopElec, firmwareRunning } from './ui/elec';
@@ -93,6 +95,8 @@ class FormframeApp implements App {
   private saveT: any = null; // refreshes the Save button after edits
   /** The project as last saved (or opened): anything different is an unsaved edit. */
   private savedText = '';
+  /** Repaints the 3D-unavailable notice (its project summary) when a project opens. */
+  private glRefresh = () => {};
   /** Undo / redo: serialized project snapshots, taken once changes settle (a drag or a burst of typing is one step). */
   private hist = { undo: [] as string[], redo: [] as string[], cur: '', t: null as any, restoring: false };
   private dirHandle: any = null;
@@ -105,6 +109,13 @@ class FormframeApp implements App {
     document.body.classList.toggle('hosted', HOSTED);
     this.project = blankProject();
     this.viewport = new Viewport($('#viewport'));
+    const gln = glNotice(this.viewport, $('#viewport'), {
+      works: 'Electronics, wiring, code, Run, the bench, checks, the parts list and saving all still work; only the 3D picture is missing.',
+      summary: () => { const cs = this.project?.electronics.comps ?? []; return cs.length ? `<b>In this project:</b> ${cs.map(c => esc(COMPONENTS[c.type]?.name ?? c.type)).join(', ')}` : ''; },
+      go: { label: 'Go to Electronics', act: () => this.setMode('elec') },
+    });
+    document.body.classList.toggle('no-gl', !!this.viewport.failure);
+    this.glRefresh = () => gln.refresh();
     this.bench = new Bench(this.board(), this.project.env, null);
   }
 
@@ -509,6 +520,7 @@ class FormframeApp implements App {
     assistantProjectChanged();
     hideHome(); this.viewport.resize(); toast(msg);
     this.savedText = editText(this.project); this.updateSave(); // opened: nothing to save until you change something
+    this.glRefresh();
   }
   /** Bring an outside project (file, folder, drop) into the library. */
   private async importProject(p: Project, msg: string) {
