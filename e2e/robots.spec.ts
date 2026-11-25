@@ -77,3 +77,25 @@ test('any part can become a joint in the Design inspector', async ({ page }) => 
   await expect(page.locator('#bjDrive')).toHaveValue(/:2$/); // PCA9685 channel 2
   await expect(page.locator('#bjFoot')).not.toBeChecked();
 });
+
+test('editing the code stops the run and puts the robot back where it started', async ({ page }) => {
+  test.setTimeout(180_000);
+  const errs = errors(page);
+  await home(page);
+  await page.click('#hRobots button[data-k="rover-line"]');
+  await page.waitForFunction(() => !!(window as any).formframe?.projectId);
+  const start = (await sim(page))!;
+  await mode(page, 'elec');
+  await page.click('#bRun');
+  await expect.poll(async () => { const s = (await sim(page))!; return Math.hypot(s.x - start.x, s.z - start.z); }, { timeout: 90_000 }).toBeGreaterThan(50);
+  // edit the code while it runs
+  await page.click('#code');
+  await page.keyboard.press('ControlOrMeta+End');
+  await page.keyboard.type('\n# tweak');
+  await expect(page.locator('#bRun')).toHaveText('Run');
+  await expect.poll(async () => { const s = (await sim(page))!; return Math.hypot(s.x - start.x, s.z - start.z); }, { timeout: 10_000 }).toBeLessThan(1);
+  // and it runs again from the start
+  await page.click('#bRun');
+  await expect(page.locator('#bRun')).toHaveText('Stop');
+  expect(errs).toEqual([]);
+});

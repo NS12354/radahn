@@ -1,5 +1,6 @@
 import type { App } from './app';
 import { $, $$, b64decode, el, esc, toast } from './dom';
+import { resetRobot } from './robot';
 import { HOSTED } from '../hosted';
 import { BOARDS, KIT_PRESETS, pinLabel, boardOptions } from '../hw/library/boards';
 import { COMPONENTS } from '../hw/library/components';
@@ -151,13 +152,31 @@ async function run() {
   setRunUI();
 }
 async function stop() {
-  if (!runtime) return;
-  await runtime.stop();
+  const rt = runtime; if (!rt) return;
+  await rt.stop();
+  if (runtime !== rt) return; // a new run started while this one was stopping: leave it alone
   serial('Stopped.', 's'); status('stopped');
   A.product.setLeds(null); A.product.haptic(false); audio.silenceAll();
   runtime = null; setRunUI();
 }
 export const elecRunning = () => !!runtime?.running;
+
+/**
+ * The code changed: the old program no longer applies. Stop it if it's running, and put
+ * the robot and every part on the bench back where they started, so the next Run starts fresh.
+ */
+let editT: any = 0;
+function codeEdited() {
+  codeChanged();
+  if (runtime?.running) { void stop(); toast('Code changed, so the run stopped and everything is back at the start. Press Run to try it.'); }
+  clearTimeout(editT);
+  editT = setTimeout(() => {
+    if (runtime?.running) return; // started again meanwhile
+    A.bench.reset();
+    A.product.setLeds(null); A.product.haptic(false);
+    resetRobot();
+  }, 120);
+}
 export function stopElec() { if (runtime?.running) stop(); }
 /** Is firmware running on the virtual board (so the bench drives the robot)? */
 export const firmwareRunning = () => !!runtime?.running && target === 'virtual';
@@ -194,7 +213,7 @@ export function importFiles(items: { name: string; content: string }[], source: 
   for (const [, d, c] of plan) e.files[d] = c;
   if (plan.length) {
     e.filesEdited = true; e.activeFile = plan[0][1]; compiled = null;
-    renderTabs(); A.changed('electronics'); codeChanged(); bridge.files();
+    renderTabs(); A.changed('electronics'); codeEdited(); bridge.files();
     track('code', `Imported ${plan.length} file${plan.length > 1 ? 's' : ''} from ${source}: ${plan.map(p => p[1]).join(', ')}`);
   }
   const kinds = board().lang === 'arduino' ? '.ino, .h, .cpp and .hex' : '.py';
@@ -288,8 +307,8 @@ export const device = {
   async verify() { compiled = null; return !!(await compile()); },
   send(text: string) { if (!runtime?.running) { serial('Nothing is running. Run the code first.', 'w'); return; } runtime.sendSerial(text); },
   interrupt() { if (runtime?.interrupt) runtime.interrupt(); else runtime?.sendSerial('\x03'); },
-  setFile(name: string, content: string) { const e = A.project.electronics; if (e.files[name] !== content) { codeChanged(); track('code', `Edited ${name}`); } e.files[name] = content; e.filesEdited = true; if (!e.activeFile) e.activeFile = name; if (A.mode === 'elec') renderTabs(); A.changed('electronics'); },
-  deleteFile(name: string) { const e = A.project.electronics; if (Object.keys(e.files).length <= 1) return false; delete e.files[name]; if (e.activeFile === name) e.activeFile = Object.keys(e.files)[0]; if (A.mode === 'elec') renderTabs(); A.changed('electronics'); return true; },
+  setFile(name: string, content: string) { const e = A.project.electronics; if (e.files[name] !== content) { codeEdited(); track('code', `Edited ${name}`); } e.files[name] = content; e.filesEdited = true; if (!e.activeFile) e.activeFile = name; if (A.mode === 'elec') renderTabs(); A.changed('electronics'); },
+  deleteFile(name: string) { const e = A.project.electronics; if (Object.keys(e.files).length <= 1) return false; delete e.files[name]; if (e.activeFile === name) e.activeFile = Object.keys(e.files)[0]; if (A.mode === 'elec') renderTabs(); A.changed('electronics'); codeEdited(); return true; },
   renameFile(from: string, to: string) { const e = A.project.electronics; if (!e.files[from] || e.files[to] != null) return false; e.files[to] = e.files[from]; delete e.files[from]; if (e.activeFile === from) e.activeFile = to; if (A.mode === 'elec') renderTabs(); A.changed('electronics'); return true; },
 };
 
@@ -591,7 +610,7 @@ export function initElec(app: App) {
     renderElec(A);
   }));
   const ta = $('#code') as HTMLTextAreaElement;
-  ta.oninput = () => { const e = A.project.electronics; track('code', `Edited ${e.activeFile}`); e.files[e.activeFile] = ta.value; e.filesEdited = true; gutter(); A.changed('electronics'); bridge.files(); codeChanged(); };
+  ta.oninput = () => { const e = A.project.electronics; track('code', `Edited ${e.activeFile}`); e.files[e.activeFile] = ta.value; e.filesEdited = true; gutter(); A.changed('electronics'); bridge.files(); codeEdited(); };
   ta.onscroll = () => { $('#gutter').scrollTop = ta.scrollTop; };
   ta.onkeydown = e => {
     if (e.key === 'Tab') { e.preventDefault(); ta.setRangeText('    ', ta.selectionStart, ta.selectionEnd, 'end'); ta.dispatchEvent(new Event('input')); }
@@ -600,7 +619,7 @@ export function initElec(app: App) {
   $('#bRun').onclick = () => (runtime?.running ? stop() : run());
   $('#bRunTop').onclick = () => (runtime?.running ? stop() : run());
   $('#bCompile').onclick = async () => { compiled = null; await compile(); };
-  $('#bTpl').onclick = () => { const e = A.project.electronics; e.files = starterFiles(board(), e); e.filesEdited = false; e.activeFile = Object.keys(e.files)[0]; renderTabs(); A.changed('electronics'); toast(e.starter === 'blank' ? 'Code reset to the empty starter' : 'Code reset to the template for the current wiring'); };
+  $('#bTpl').onclick = () => { const e = A.project.electronics; e.files = starterFiles(board(), e); e.filesEdited = false; e.activeFile = Object.keys(e.files)[0]; renderTabs(); A.changed('electronics'); codeEdited(); toast(e.starter === 'blank' ? 'Code reset to the empty starter' : 'Code reset to the template for the current wiring'); };
   $('#bClr').onclick = () => { $('#serial').innerHTML = ''; partial = ''; };
   const si = $('#serialInput') as HTMLInputElement;
   si.onkeydown = e => {
