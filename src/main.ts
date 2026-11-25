@@ -490,6 +490,7 @@ class FormframeApp implements App {
     if (id !== this.projectId) closeClaude();
     if (this.blender.linked && id !== this.projectId) this.blender.stop();
     this.projectId = id; this.lastThumb = 0;
+    $('#bResetPos').hidden = true; // shows again after Run, for robots
     this.project = p;
     if (id && !HOSTED) this.blender.resume(id); // the Blender link needs the local dev server
     setTimeout(() => notifyDevice(), 0);

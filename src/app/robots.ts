@@ -147,7 +147,7 @@ function hexapod(board: BoardDef) {
   const [sda, scl] = i2cPins(board);
   const L = comp('pca9685', { SDA: sda, SCL: scl }, 0, { address: 0x40, servos: Array.from({ length: 9 }, (_, ch) => ({ ch, type: 'mg996r' })) });
   const R = comp('pca9685', { SDA: sda, SCL: scl }, 1, { address: 0x41, servos: Array.from({ length: 9 }, (_, ch) => ({ ch, type: 'mg996r' })) });
-  const bec = comp('bec', {}, 2, { amps: 20 });
+  const bec = comp('bec', {}, 2, { amps: 25 }); // 18 × MG996R stalling ≈ 22.5 A
   const H = 100, C = 30, F = 60, T = 100;
   const body = add('Body', 'rbox', [120, 36, 220], [0, H, 0], { param: 14, color: '#33c27f', detail: 'shell' });
   add('Head', 'rbox', [60, 26, 26], [0, H + 4, 118], { color: DARK, parent: body.id, detail: 'head' });

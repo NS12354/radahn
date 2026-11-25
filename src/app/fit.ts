@@ -105,7 +105,7 @@ export function fitBuilt(parts: BuiltPart[]): FitRow[] {
     const outside = new Set<BuiltPart>();
     for (const s of solids) for (let k = 0; k < 3; k++) if (s.box.min[k] < min[k] - EPS || s.box.max[k] > max[k] + EPS) outside.add(s.inst.part);
     for (const p of outside) rows.push({ level: 'err', msg: `${p.name} sticks out of the enclosure`, ids: [p.id] });
-  } else if (inner.length) rows.push({ level: 'warn', msg: 'No enclosure: set a part\'s Kind to Shell to check what fits inside it', ids: [] });
+  } else if (inner.length && !parts.some(p => (p as any).joint)) rows.push({ level: 'warn', msg: 'No enclosure: set a part\'s Kind to Shell to check what fits inside it', ids: [] }); // robots (jointed) aren't enclosures
   if (!rows.length && inner.length) rows.push({ level: 'ok', msg: `${inner.length} internal part${inner.length > 1 ? 's' : ''} fit without collisions`, ids: [] });
   return rows;
 }

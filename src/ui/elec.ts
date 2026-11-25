@@ -1,6 +1,6 @@
 import type { App } from './app';
 import { $, $$, b64decode, el, esc, toast } from './dom';
-import { resetRobot } from './robot';
+import { resetRobot, robotSim } from './robot';
 import { HOSTED } from '../hosted';
 import { BOARDS, KIT_PRESETS, pinLabel, boardOptions } from '../hw/library/boards';
 import { COMPONENTS } from '../hw/library/components';
@@ -183,6 +183,7 @@ export const firmwareRunning = () => !!runtime?.running && target === 'virtual';
 
 function setRunUI(starting = false) {
   const on = starting || !!runtime?.running;
+  if (on && robotSim()) $('#bResetPos').hidden = false; // shows once a robot has been run; hidden again when another project opens
   const b = $('#bRun'); b.textContent = on ? 'Stop' : 'Run'; b.dataset.ico = on ? 'stop' : 'play'; b.classList.toggle('primary', !on);
   const t = document.getElementById('bRunTop'); if (t) { t.textContent = on ? 'Stop' : 'Run'; t.dataset.ico = on ? 'stop' : 'play'; t.classList.toggle('on', on); }
   $('#runState').innerHTML = on ? '<span style="color:var(--ok)">● running</span>' : '<span style="color:var(--faint)">idle</span>';
@@ -618,6 +619,7 @@ export function initElec(app: App) {
   };
   $('#bRun').onclick = () => (runtime?.running ? stop() : run());
   $('#bRunTop').onclick = () => (runtime?.running ? stop() : run());
+  $('#bResetPos').onclick = () => { resetRobot(); toast('The robot is back where it started'); };
   $('#bCompile').onclick = async () => { compiled = null; await compile(); };
   $('#bTpl').onclick = () => { const e = A.project.electronics; e.files = starterFiles(board(), e); e.filesEdited = false; e.activeFile = Object.keys(e.files)[0]; renderTabs(); A.changed('electronics'); codeEdited(); toast(e.starter === 'blank' ? 'Code reset to the empty starter' : 'Code reset to the template for the current wiring'); };
   $('#bClr').onclick = () => { $('#serial').innerHTML = ''; partial = ''; };
