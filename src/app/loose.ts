@@ -57,21 +57,35 @@ function freeSpot(p: Project, size: [number, number, number]): [number, number] 
 }
 
 /**
+ * A component removed in Electronics takes its 3D part with it (a display module, a
+ * sensor, a button cap...), on any model, along with parts mounted on that part
+ * (its display window, say). Parts not tied to a component are never touched.
+ */
+export function dropRemovedParts(m: { parts: { id: string; parent?: string; comp?: string }[] }, uids: Set<string>): boolean {
+  const gone = new Set(m.parts.filter(q => q.comp && q.comp !== 'board' && !uids.has(q.comp)).map(q => q.id));
+  if (!gone.size) return false;
+  let grew = true;
+  while (grew) { grew = false; for (const q of m.parts) if (q.parent && gone.has(q.parent) && !gone.has(q.id)) { gone.add(q.id); grew = true; } }
+  m.parts = m.parts.filter(q => !gone.has(q.id));
+  return true;
+}
+
+/**
  * Keep the world in step with the wiring: a part added in Electronics (that the
  * model doesn't already show) appears loose in the world, once; a removed part's
  * loose object and attached parts go away. Returns true when it changed anything.
  */
 export function syncLooseParts(p: Project): boolean {
-  const m = p.product.built, w = m?.robot?.world; if (!m || !w) return false;
-  const sp = m.robot!, uids = new Set(p.electronics.comps.map(c => c.uid));
-  let changed = false;
+  const m = p.product.built; if (!m) return false;
+  const uids = new Set(p.electronics.comps.map(c => c.uid));
+  let changed = dropRemovedParts(m, uids);
+  const w = m.robot?.world; if (!w) return changed;
+  const sp = m.robot!;
   const placed = new Set((sp.placed ?? []).filter(u => uids.has(u)));
   if ((sp.placed ?? []).length !== placed.size) changed = true;
   // removed in Electronics: drop its loose object and the parts it was attached as
   const keepObs = w.obstacles.filter(o => !o.comp || uids.has(o.comp));
   if (keepObs.length !== w.obstacles.length) { w.obstacles = keepObs; changed = true; }
-  const keepParts = m.parts.filter(q => !q.attached || !q.comp || uids.has(q.comp));
-  if (keepParts.length !== m.parts.length) { m.parts = keepParts; changed = true; }
   // added: show it loose, once (deleting the loose object later doesn't bring it back)
   for (const c of p.electronics.comps) {
     if (NOT_LOOSE.has(c.type) || placed.has(c.uid) || m.parts.some(q => q.comp === c.uid) || w.obstacles.some(o => o.comp === c.uid)) { placed.add(c.uid); continue; }

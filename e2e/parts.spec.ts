@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { home, mode, errors } from './helpers';
+import { home, mode, errors, newProject } from './helpers';
 
 /** The wider parts catalog: add parts to a blank project and run the generated demo. */
 test('an OLED and a 7-segment display run real MicroPython on the emulated Pico', async ({ page }) => {
@@ -27,4 +27,22 @@ test('switching boards offers more than 20, grouped by family', async ({ page })
   const groups = await page.locator('#homeBoard optgroup').evaluateAll(gs => gs.map(g => g.getAttribute('label')));
   expect(groups).toEqual(['Raspberry Pi Pico & RP2040', 'Arduino', 'ESP32 & ESP8266', 'Raspberry Pi (Linux)']);
   expect(await page.locator('#homeBoard option').count()).toBeGreaterThanOrEqual(20);
+});
+
+test('removing a part in Electronics removes it from the 3D model too', async ({ page }) => {
+  test.setTimeout(120_000);
+  const errs = errors(page);
+  await newProject(page, 'blank');
+  await mode(page, 'elec');
+  await page.click('#libList button[data-t="oled"]');
+  await mode(page, 'design');
+  await page.click('#vpEmpty button:has-text("Auto build")');
+  const names = () => page.evaluate(() => (window as any).formframe.project.product.built?.parts.map((p: any) => p.name) ?? []);
+  await expect.poll(async () => (await names()).filter((n: string) => /OLED/.test(n)).length).toBe(2); // the module and its window
+  await mode(page, 'elec');
+  await page.locator('#bench .x').last().click();
+  await expect.poll(async () => (await names()).filter((n: string) => /OLED/.test(n)).length).toBe(0);
+  expect((await names()).some((n: string) => /Pico/.test(n))).toBe(true); // the rest stays
+  await expect.poll(() => page.evaluate(() => [...(window as any).formframe.product.roots.values()].filter((r: any) => /OLED/.test(r.userData.part?.name ?? '')).length)).toBe(0);
+  expect(errs).toEqual([]);
 });

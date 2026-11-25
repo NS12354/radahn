@@ -43,7 +43,7 @@ import type { App, Mode } from './ui/app';
 import { $, $$, askSave, b64decode, b64encode, closeModal, copyText, download, modal, toast } from './ui/dom';
 import { initDesign, renderDesign } from './ui/design';
 import { armIdle, drawGraph, fire, initProto, redrawScreen, renderLive, renderScreens, renderTrs, stopIdle } from './ui/proto';
-import { drawWires, elecDial, elecFrame, elecPress, initElec, renderElec, stopElec, firmwareRunning } from './ui/elec';
+import { drawWires, elecDial, elecFrame, elecPress, initElec, paintIdleScreen, renderElec, stopElec, firmwareRunning } from './ui/elec';
 import { addComment, placePins, renderComments, renderPins } from './ui/review';
 import { exportFirmware } from './proto/stateMachine';
 
@@ -178,7 +178,7 @@ class FormframeApp implements App {
     if (what === 'electronics' || what === 'product') { clearTimeout(this.hT); this.hT = setTimeout(() => refreshStatic(), 150); }
     if (what === 'electronics' || what === 'meta') { clearTimeout(this.devT); this.devT = setTimeout(() => notifyDevice(), 200); }
     if (what === 'electronics' || what === 'product') { clearTimeout(this.elecT); this.elecT = setTimeout(() => this.refreshElectronics(), 150); }
-    if (what === 'electronics' && syncLooseParts(this.project)) { this.changed('product'); renderRobotPanel(); } // new parts appear loose in a robot's world
+    if (what === 'electronics' && syncLooseParts(this.project)) { if (this.product instanceof BuiltProduct) { this.product.build(); if (this.selected && !this.project.product.built?.parts.some(q => q.id === this.selected)) this.selectPart(null); } this.changed('product'); renderRobotPanel(); } // removed parts leave the model; new ones appear loose in a robot's world
     if (what === 'electronics') { clearTimeout(this.clT); this.clT = setTimeout(() => { claudeFilesChanged(); claudeContextChanged(); }, 250); }
     clearTimeout(this.saveT);
     if (this.projectId) { const b = $('#bSave') as HTMLButtonElement; b.disabled = false; b.classList.remove('clean'); b.textContent = 'Save'; } // at once; checked properly below
@@ -469,8 +469,7 @@ class FormframeApp implements App {
     if (m === 'proto' && firmwareRunning()) { stopElec(); this.product.setLeds(null); redrawScreen(this); }
     if (m === 'elec' && prev !== 'elec' && !firmwareRunning()) {
       renderElec(this);
-      const g = this.product.screen.getContext('2d')!; g.fillStyle = '#000'; g.fillRect(0, 0, 512, 512);
-      g.fillStyle = '#3a3f47'; g.font = '500 22px Inter'; g.textAlign = 'center'; g.fillText('Display off · press Run', 256, 256); this.product.screenUpdated();
+      paintIdleScreen();
     }
     stopIdle(); if (m === 'proto') armIdle(this);
     if (m === 'plan') renderPlan();

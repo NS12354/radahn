@@ -1,6 +1,7 @@
 import type { App } from './app';
 import { $, $$, b64decode, el, esc, toast } from './dom';
 import { resetRobot, robotSim } from './robot';
+import { displayComps } from '../app/screenpart';
 import { HOSTED } from '../hosted';
 import { BOARDS, KIT_PRESETS, pinLabel, boardOptions } from '../hw/library/boards';
 import { COMPONENTS } from '../hw/library/components';
@@ -514,9 +515,16 @@ function renderChecks() {
   $('#ebom').innerHTML = rows.map(r => `<tr><td>${esc(r[0])}</td><td>$${r[1].toFixed(2)}</td></tr>`).join('') + `<tr class="tot"><td>Dev-kit total</td><td>$${rows.reduce((a, r) => a + r[1], 0).toFixed(2)}</td></tr>`;
 }
 
+/** The product's screen while no code runs: dark, saying why (no display wired, or press Run). */
+export function paintIdleScreen() {
+  const g = A.product.screen.getContext('2d')!; g.fillStyle = '#000'; g.fillRect(0, 0, 512, 512);
+  g.fillStyle = '#3a3f47'; g.font = '500 22px Inter'; g.textAlign = 'center';
+  g.fillText(displayComps(A.project).length ? 'Display off · press Run' : 'No display wired', 256, 256); A.product.screenUpdated();
+}
 function wiringChanged() {
   const e = A.project.electronics;
   if (runtime?.running) { stop(); serial('[sim] Wiring changed, so the firmware was stopped. Press Run again.', 'w'); }
+  if (A.mode === 'elec' || !displayComps(A.project).length) paintIdleScreen(); // a removed display goes dark at once
   A.bench.load(board(), e.comps);
   if (!e.filesEdited) e.files = starterFiles(board(), e);
   else serial('[sim] Wiring changed. Check the pin numbers in your code (or Reset code).', 'w');
