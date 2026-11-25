@@ -36,7 +36,7 @@ function render(err = '') {
   const email = `<label class="aufield"><span>Email</span><input type="email" name="email" autocomplete="email" required></label>`;
   const pass = (auto: string) => `<label class="aufield"><span>Password</span><input type="password" name="password" autocomplete="${auto}" minlength="8" required></label>`;
   const body = mode === 'verify'
-    ? `<p class="aulead">We sent a 6-digit code to <b>${esc(sentTo)}</b>. Enter it below. It can take a minute to arrive; check spam too.</p>
+    ? `<p class="aulead">We emailed <b>${esc(sentTo)}</b>. Enter the code from it below, or open the link in it on this device. It can take a minute to arrive; check spam too.</p>
        <label class="aufield"><span>Code</span><input type="text" name="code" class="aucode" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]*" maxlength="10" required></label>
        <p class="auerr" role="alert">${esc(err)}</p>
        <button class="btn primary aubig" type="submit">${sentFor === 'reset' ? 'Continue' : 'Verify'}</button>
@@ -68,7 +68,7 @@ function render(err = '') {
     ev.preventDefault();
     const f = new FormData(form), em = String(f.get('email') ?? '').trim(), pw = String(f.get('password') ?? '');
     const code = String(f.get('code') ?? '').replace(/\s+/g, '');
-    if (mode === 'verify' && !/^\d{6,10}$/.test(code)) return render('Enter the 6-digit code from the email.');
+    if (mode === 'verify' && !/^\d{6,10}$/.test(code)) return render('Enter the code from the email (or open the link in it).');
     if (mode !== 'newpass' && mode !== 'verify' && !/^\S+@\S+\.\S+$/.test(em)) return render('Enter a valid email address.');
     if ((mode === 'signin' || mode === 'signup' || mode === 'newpass') && pw.length < 8) return render('Passwords are at least 8 characters.');
     const btn = form.querySelector<HTMLButtonElement>('button[type=submit]')!; btn.disabled = true; btn.textContent = 'One moment…';
