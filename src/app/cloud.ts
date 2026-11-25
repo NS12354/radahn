@@ -19,7 +19,7 @@ export interface CloudRow { kind: Kind; id: string; name: string; board: string;
 export interface LocalLib {
   list(): Promise<{ id: string; updated: number; owner?: string }[]>;
   /** The full record to upload: body text plus list fields. */
-  read(id: string): Promise<{ name: string; board: string; thumb: string | null; created: number; updated: number; body: string } | null>;
+  read(id: string): Promise<{ name: string; board: string; thumb: string | null; created: number; updated: number; body: string; owner?: string } | null>;
   /** Put a record that came from the account into this browser (without uploading it again). */
   write(id: string, r: { name: string; board: string; thumb: string | null; created: number; updated: number; body: string }, owner: string): Promise<void>;
   remove(id: string): Promise<void>;
@@ -38,6 +38,17 @@ export const currentUser = () => user;
 /** False until the saved session (if any) has been restored, so nobody is treated as signed out too early. */
 export const sessionKnown = () => known;
 /** The app saves what's open before signing out, and closes it afterwards (so nothing is re-saved without an owner). */
+/** A guest's own copy of The First Step (main.ts): it joins the account they create. */
+export const GUEST_FIRST = 'ff.guest.firstStep';
+/** Set once an account has synced in this browser: after that, copies nobody owns are never handed to an account. */
+const ADOPTED = 'ff.cloud.adopted';
+const ls = { get: (k: string) => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k: string, v: string) => { try { localStorage.setItem(k, v); } catch { /* */ } }, del: (k: string) => { try { localStorage.removeItem(k); } catch { /* */ } } };
+/**
+ * Which copies with no owner may join the signed-in account: a guest's First Step, and,
+ * the first time any account is used in this browser, the work made here before accounts.
+ * Never another account's leftovers, and never someone else's guest work later on.
+ */
+function adoptable(id: string, firstAccountHere: boolean) { return ls.get(GUEST_FIRST) === id || firstAccountHere; }
 let signOutHooks: { save?: () => Promise<void>; close?: () => Promise<void> | void } = {};
 export function onSignOut(h: typeof signOutHooks) { signOutHooks = h; }
 export type SyncState = 'off' | 'idle' | 'saving' | 'offline' | 'error';
@@ -49,6 +60,8 @@ const emit = () => listeners.forEach(f => { try { f(); } catch { /* a listener's
 function setState(s: SyncState, msg = '') { state = s; stateMsg = msg; emit(); }
 
 const libs = new Map<Kind, LocalLib>();
+/** Unowned copies the sign-in sync decided this account may take (see adoptable). */
+const adoptedNow = new Set<string>();
 export function registerLibrary(kind: Kind, lib: LocalLib) { libs.set(kind, lib); }
 
 // ---------------------------------------------------------------- uploads
@@ -84,7 +97,8 @@ async function uploadAll() {
         if (error) throw error;
       } else {
         const r = await lib.read(p.id);
-        if (r) {
+        // only this account's copies go up (a copy nobody owns joins an account only through the sign-in sync)
+        if (r && (r.owner === uid || (!r.owner && adoptedNow.has(`${p.kind}:${p.id}`)))) {
           const { error } = await c.from('documents').upsert({ user_id: uid, kind: p.kind, id: p.id, name: r.name.slice(0, 300), board: r.board, thumb: r.thumb, body: r.body, created: r.created, updated: r.updated, deleted: false });
           if (error) throw error;
           await lib.own(p.id, uid);
@@ -111,11 +125,17 @@ async function doSync() {
     const { data, error } = await c.from('documents').select('kind,id,name,board,thumb,created,updated,deleted').eq('user_id', uid);
     if (error) throw error;
     const remote = new Map((data as CloudRow[]).map(r => [`${r.kind}:${r.id}`, r]));
+    const locals = new Map<Kind, Awaited<ReturnType<LocalLib['list']>>>();
+    for (const [kind, lib] of libs) locals.set(kind, await lib.list());
+    const firstAccountHere = !ls.get(ADOPTED) && ![...locals.values()].some(ls2 => ls2.some(l => l.owner));
     for (const [kind, lib] of libs) {
-      const local = await lib.list();
+      const local = locals.get(kind)!;
       const localIds = new Map(local.map(l => [l.id, l]));
       for (const l of local) {
         if (l.owner && l.owner !== uid) continue; // someone else's leftovers: not ours to upload
+        if (!l.owner && !adoptable(l.id, firstAccountHere)) continue; // nobody's: stays out of this account
+        if (!l.owner) adoptedNow.add(`${kind}:${l.id}`);
+        if (!l.owner && ls.get(GUEST_FIRST) === l.id) ls.del(GUEST_FIRST); // the guest copy is this account's now
         const r = remote.get(`${kind}:${l.id}`);
         if (r?.deleted) { if (l.owner === uid && !pending.has(`${kind}:${l.id}`)) await lib.remove(l.id); continue; } // deleted on another computer (unless edited here since)
         if (!r || l.updated > r.updated) pending.set(`${kind}:${l.id}`, { kind, id: l.id }); // newer here (or new): upload
@@ -130,7 +150,7 @@ async function doSync() {
         await lib.write(r.id, { name: r.name, board: r.board, thumb: r.thumb, created: r.created, updated: r.updated, body: (full as { body: string }).body }, uid);
       }
     }
-    remember();
+    remember(); ls.set(ADOPTED, '1');
     setState('idle'); emit();
     await flushUploads();
   } catch (e: any) {
@@ -211,6 +231,7 @@ export async function initAccounts() {
   c.auth.onAuthStateChange((event, session) => {
     const before = user?.id;
     user = session?.user ?? null;
+    if (user?.id !== before) adoptedNow.clear(); // a different person: nothing carries over
     if (event === 'PASSWORD_RECOVERY') recovering = true;
     if (!user) setState('off'); else if (state === 'off') setState('idle');
     emit();

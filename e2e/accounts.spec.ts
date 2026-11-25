@@ -190,3 +190,49 @@ test('signing out with a project open closes it and leaves nothing behind for th
   expect(errs).toEqual([]);
   await c.close();
 });
+
+test('two accounts on one browser never see or receive each other’s projects', async ({ browser }) => {
+  test.setTimeout(120_000);
+  const fake = fakeSupabase();
+  const c = await browser.newContext(); await fake.attach(c);
+  const page = await c.newPage(); const errs = errors(page);
+  await home(page);
+  const make = async (name: string) => {
+    await page.click('#hBlank b');
+    await page.waitForFunction(() => !!(window as any).formframe?.projectId);
+    await page.fill('#pname', name); await page.press('#pname', 'Enter');
+    await page.waitForTimeout(600);
+    await page.click('#bHome'); await expect(page.locator('#home')).toBeVisible();
+  };
+  const names = async () => page.locator('#homeGrid .pcard .pi b').allTextContents();
+  const signOut = async () => { await page.click('#hAccount'); await page.click('#acMenu [data-a=out]'); await expect(page.locator('#hAccount')).toHaveText('Sign in'); };
+  const inAccount = (email: string) => fake.db.filter(r => r.user_id === fake.users.get(email)?.id && r.kind === 'project' && !r.deleted).map(r => r.name).sort();
+
+  // work from before anyone signed in here joins the first account
+  await make('Before accounts');
+  await signInWith(page, 'ann@example.com', 'correct horse', true);
+  await expect(page.locator('#hAccount')).toHaveText('ann');
+  await make('Ann work');
+  await expect.poll(() => inAccount('ann@example.com')).toEqual(['Ann work', 'Before accounts']);
+  await signOut();
+  expect(await names()).toEqual([]);
+
+  // someone works signed out, then a second person signs in: nobody else's work shows or uploads
+  await make('Signed-out work');
+  await signInWith(page, 'ben@example.com', 'another horse', true);
+  await expect(page.locator('#hAccount')).toHaveText('ben');
+  await page.waitForTimeout(2500);
+  expect(await names()).toEqual([]);
+  await make('Ben work');
+  expect(await names()).toEqual(['Ben work']);
+  await expect.poll(() => inAccount('ben@example.com')).toEqual(['Ben work']);
+  expect(inAccount('ann@example.com')).toEqual(['Ann work', 'Before accounts']);
+
+  // switching back: Ann sees only hers
+  await signOut();
+  await signInWith(page, 'ann@example.com', 'correct horse');
+  await expect(page.locator('#hAccount')).toHaveText('ann');
+  await expect.poll(async () => (await names()).sort()).toEqual(['Ann work', 'Before accounts']);
+  expect(errs).toEqual([]);
+  await c.close();
+});

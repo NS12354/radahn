@@ -110,8 +110,8 @@ export const newSceneId = () => 's' + Date.now().toString(36) + Math.random().to
 export async function listScenes(): Promise<SceneMeta[]> {
   const d = await db();
   const all = d ? (await req<{ meta: SceneMeta }[]>(d.transaction(STORE).objectStore(STORE).getAll())).map(x => x.meta) : [...mem.values()].map(x => x.meta);
-  const me = currentUser()?.id; // another account's leftovers in this browser stay hidden
-  return all.filter(m => !m.owner || !me || m.owner === me).sort((a, b) => b.updated - a.updated);
+  const me = currentUser()?.id; // signed in: only this account's copies; signed out: only copies no account owns
+  return all.filter(m => (me ? m.owner === me : !m.owner)).sort((a, b) => b.updated - a.updated);
 }
 async function getRec(id: string) {
   const d = await db();
@@ -120,7 +120,7 @@ async function getRec(id: string) {
 export async function loadScene(id: string): Promise<Scene | null> { const r = await getRec(id); return r ? parseScene(r.body) : null; }
 export async function saveScene(id: string, s: Scene, thumb?: string | null) {
   const prev = (await getRec(id))?.meta, now = Date.now();
-  const rec = { meta: { id, name: s.name || 'Untitled scene', created: prev?.created ?? now, updated: now, robots: s.robots.length, thumb: thumb === null ? undefined : thumb ?? prev?.thumb, owner: prev?.owner }, body: serializeScene(s) };
+  const rec = { meta: { id, name: s.name || 'Untitled scene', created: prev?.created ?? now, updated: now, robots: s.robots.length, thumb: thumb === null ? undefined : thumb ?? prev?.thumb, owner: prev ? prev.owner : currentUser()?.id }, body: serializeScene(s) };
   await putRec(rec);
   localChanged('scene', id);
 }
@@ -143,7 +143,7 @@ async function allRecs() {
 // ---- the scene library as the account sync sees it (cloud.ts)
 registerLibrary('scene', {
   list: async () => (await allRecs()).map(m => ({ id: m.id, updated: m.updated, owner: m.owner })),
-  read: async id => { const r = await getRec(id); return r ? { name: r.meta.name, board: '', thumb: r.meta.thumb ?? null, created: r.meta.created, updated: r.meta.updated, body: r.body } : null; },
+  read: async id => { const r = await getRec(id); return r ? { name: r.meta.name, board: '', thumb: r.meta.thumb ?? null, created: r.meta.created, updated: r.meta.updated, body: r.body, owner: r.meta.owner } : null; },
   write: async (id, r, owner) => { let robots = 0; try { robots = (JSON.parse(r.body).robots ?? []).length; } catch { /* */ } await putRec({ meta: { id, name: r.name, created: r.created, updated: r.updated, robots, thumb: r.thumb ?? undefined, owner }, body: r.body }); },
   remove: id => removeRec(id),
   own: async (id, owner) => { const r = await getRec(id); if (r && r.meta.owner !== owner) await putRec({ ...r, meta: { ...r.meta, owner } }); },

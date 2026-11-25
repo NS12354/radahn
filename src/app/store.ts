@@ -49,8 +49,8 @@ export const newProjectId = () => 'p' + Date.now().toString(36) + Math.random().
 export async function listProjects(): Promise<ProjectMeta[]> {
   const d = await db();
   const all = d ? await req<ProjectMeta[]>(d.transaction(META).objectStore(META).getAll()) : [...mem.meta.values()];
-  const me = currentUser()?.id; // another account's leftovers in this browser stay hidden
-  return all.filter(m => !m.owner || !me || m.owner === me).sort((a, b) => b.updated - a.updated);
+  const me = currentUser()?.id; // signed in: only this account's copies; signed out: only copies no account owns
+  return all.filter(m => (me ? m.owner === me : !m.owner)).sort((a, b) => b.updated - a.updated);
 }
 
 export async function getMeta(id: string): Promise<ProjectMeta | undefined> {
@@ -71,7 +71,7 @@ export async function loadProject(id: string): Promise<Project | null> {
 export async function saveProject(id: string, p: Project, thumb?: string | null, edited = true) {
   const prev = await getMeta(id);
   const now = Date.now();
-  const meta: ProjectMeta = { id, name: p.name || 'Untitled project', created: prev?.created ?? now, updated: edited || !prev ? now : prev.updated, board: p.electronics.board, thumb: thumb === null ? undefined : thumb ?? prev?.thumb, owner: prev?.owner };
+  const meta: ProjectMeta = { id, name: p.name || 'Untitled project', created: prev?.created ?? now, updated: edited || !prev ? now : prev.updated, board: p.electronics.board, thumb: thumb === null ? undefined : thumb ?? prev?.thumb, owner: prev ? prev.owner : currentUser()?.id }; // a new copy belongs to whoever is signed in; an existing one keeps its owner (or none)
   const body = serializeProject(p);
   await putLocal(meta, body);
   localChanged('project', id);
@@ -156,7 +156,7 @@ registerLibrary('project', {
     const m = await getMeta(id); if (!m) return null;
     const d = await db();
     const body = d ? await req<string | undefined>(d.transaction(DATA).objectStore(DATA).get(id)) : mem.data.get(id);
-    return body == null ? null : { name: m.name, board: m.board, thumb: m.thumb ?? null, created: m.created, updated: m.updated, body };
+    return body == null ? null : { name: m.name, board: m.board, thumb: m.thumb ?? null, created: m.created, updated: m.updated, body, owner: m.owner };
   },
   write: (id, r, owner) => putLocal({ id, name: r.name, board: r.board, thumb: r.thumb ?? undefined, created: r.created, updated: r.updated, owner }, r.body),
   remove: id => removeLocal(id),

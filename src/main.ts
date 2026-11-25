@@ -2,7 +2,7 @@ import './styles.css';
 import * as THREE from 'three';
 import { syncLooseParts } from './app/loose';
 import { initAccountUI, isGuest, needAccount } from './ui/account';
-import { localChanged, onSignOut } from './app/cloud';
+import { GUEST_FIRST, currentUser, localChanged, onSignOut } from './app/cloud';
 import { worldDragStart, worldDragging } from './ui/worlddrag';
 import { initAssistant, assistantProjectChanged } from './ui/assistant';
 import { manageAiKey, setAccessBase } from './app/access';
@@ -48,7 +48,6 @@ import { exportFirmware } from './proto/stateMachine';
 
 const BASE = import.meta.env.BASE_URL;
 /** Where a guest's own copy of The First Step is remembered (see firstStep). */
-const GUEST_FIRST = 'ff.guest.firstStep';
 const guestFirstStep = () => { try { return localStorage.getItem(GUEST_FIRST); } catch { return null; } };
 
 const HINT_ELEC = '<b>Electronics</b> · wire a board and press <b>Run</b>: the parts on the 3D model follow the running code';
@@ -300,6 +299,8 @@ class FormframeApp implements App {
   private async openProject(id: string): Promise<boolean> {
     if (id !== guestFirstStep() && needAccount()) return false;
     try {
+      const meta = await getMeta(id);
+      if (meta?.owner && meta.owner !== currentUser()?.id) { toast('That project belongs to another account'); renderHome(); return false; }
       const p = await loadProject(id);
       if (!p) { toast('That project could not be found'); renderHome(); return false; }
       this.dirHandle = null;
@@ -320,7 +321,8 @@ class FormframeApp implements App {
   private async firstStep() {
     if (!isGuest()) { await this.createProject(defaultProject(), 'The First Step'); return; }
     const had = guestFirstStep();
-    if (had && await getMeta(had)) { await this.openProject(had); return; }
+    const m = had ? await getMeta(had) : undefined;
+    if (m && !m.owner) { await this.openProject(had!); return; } // still the guest's (not an account's copy)
     const id = await this.createProject(defaultProject(), 'The First Step');
     try { localStorage.setItem(GUEST_FIRST, id); } catch { /* private window: a fresh copy next time */ }
   }
