@@ -1,5 +1,6 @@
 import './styles.css';
 import * as THREE from 'three';
+import { syncLooseParts } from './app/loose';
 import { initAccountUI } from './ui/account';
 import { worldDragStart, worldDragging } from './ui/worlddrag';
 import { initAssistant, assistantProjectChanged } from './ui/assistant';
@@ -144,6 +145,7 @@ class FormframeApp implements App {
     if (what === 'electronics' || what === 'product') { clearTimeout(this.hT); this.hT = setTimeout(() => refreshStatic(), 150); }
     if (what === 'electronics' || what === 'meta') { clearTimeout(this.devT); this.devT = setTimeout(() => notifyDevice(), 200); }
     if (what === 'electronics' || what === 'product') { clearTimeout(this.elecT); this.elecT = setTimeout(() => this.refreshElectronics(), 150); }
+    if (what === 'electronics' && syncLooseParts(this.project)) { this.changed('product'); renderRobotPanel(); } // new parts appear loose in a robot's world
     if (what === 'electronics') { clearTimeout(this.clT); this.clT = setTimeout(() => { claudeFilesChanged(); claudeContextChanged(); }, 250); }
     clearTimeout(this.saveT);
     this.saveT = setTimeout(() => this.flush(), 400);
@@ -424,6 +426,7 @@ class FormframeApp implements App {
     await this.rebuildProduct();
     this.renderAll();
     renderElec(this);
+    if (syncLooseParts(this.project)) this.changed('product'); // parts added before loose parts existed
     this.setMode(this.mode);
     this.resetHistory();
     assistantProjectChanged();

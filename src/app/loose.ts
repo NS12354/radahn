@@ -14,6 +14,9 @@ import { defaultAutoOpts, newUid, type BuiltPart, type Obstacle, type Project } 
 import { BOARDS } from '../hw/library/boards';
 import { COMPONENTS } from '../hw/library/components';
 
+/** Parts that belong to the drivetrain or power and never lie loose: wheel encoders sit on the wheels, the servo supply inside. */
+const NOT_LOOSE = new Set(['encoder_wheel', 'bec']);
+
 /** The robot's main body: the biggest part with no parent (everything else hangs off it). */
 export function rootPart(parts: BuiltPart[]) {
   let best: BuiltPart | null = null, v = -1;
@@ -71,7 +74,7 @@ export function syncLooseParts(p: Project): boolean {
   if (keepParts.length !== m.parts.length) { m.parts = keepParts; changed = true; }
   // added: show it loose, once (deleting the loose object later doesn't bring it back)
   for (const c of p.electronics.comps) {
-    if (placed.has(c.uid) || m.parts.some(q => q.comp === c.uid) || w.obstacles.some(o => o.comp === c.uid)) { placed.add(c.uid); continue; }
+    if (NOT_LOOSE.has(c.type) || placed.has(c.uid) || m.parts.some(q => q.comp === c.uid) || w.obstacles.some(o => o.comp === c.uid)) { placed.add(c.uid); continue; }
     const f = flatParts(p, c.uid), name = COMPONENTS[c.type]?.name ?? c.type;
     w.obstacles.push({ shape: 'box', pos: freeSpot(p, f.size), size: f.size, color: f.color, name, material: 'plastic', pick: true, comp: c.uid });
     placed.add(c.uid); changed = true;
