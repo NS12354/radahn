@@ -193,6 +193,22 @@ export function newBuiltModel(): BuiltModel {
 export interface Transition { from: string; trig: string; to: string; act: string; led: string; hap: boolean; snd: boolean }
 export interface Comment { p: [number, number, number]; text: string; part: string; t: string }
 
+export interface Requirements {
+  description?: string;
+  use?: string;
+  /** Target build quantity (also the BOM multiplier). */
+  qty?: number;
+  /** Target budget per unit, USD (checked against the BOM). */
+  budget?: number;
+  /** Power source (POWER_OPTIONS id): sets the power budget and adds its parts to the BOM. */
+  power?: string;
+  /** Largest outside size allowed, mm (checked against the model). */
+  maxSize?: [number, number, number];
+  environment?: 'indoor' | 'outdoor';
+  inputs?: string;
+  outputs?: string;
+}
+
 export interface Project {
   format: 'formframe';
   version: number;
@@ -212,6 +228,8 @@ export interface Project {
     qty: number;
   };
   internals: Record<string, boolean>;
+  /** What the product has to do (Product → Requirements). All optional; the ones that feed checks say so. */
+  requirements?: Requirements;
   interactions: Transition[];
   electronics: {
     board: string;
